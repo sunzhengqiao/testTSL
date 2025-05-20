@@ -103,6 +103,8 @@
 //End Properties//endregion 
 
 //region On Insert
+// V1.8 now opens without auto-loading a catalog so the user can
+// choose any entry. Parameters are still saved to "_LastInserted".
 				
 	if (_bOnInsert)
 	{
@@ -110,15 +112,12 @@
 		String sDefaultCatalogTypes[] = {"Simple", "Double", "Lap"}; // Short, non-translated keys
 		String sEntries[] = TslInst().getListOfCatalogNames(scriptName());
 
-		if (_kExecuteKey.length() == 0) // Interactive insertion: no _kExecuteKey
-		{
-			// Try loading _LastInserted as default display values
-			if (sEntries.find(sLastEntry) > -1) {
-				setPropValuesFromCatalog(sLastEntry);
-			}
-			// Show dialog for user input/confirmation
-			showDialog(); 
-		}
+                if (_kExecuteKey.length() == 0) // Interactive insertion: no _kExecuteKey
+                {
+                        // Show dialog for user input/confirmation. Catalog switching
+                        // will load the selected entry's parameters as chosen by the user.
+                        showDialog();
+                }
 		else // _kExecuteKey is provided
 		{
 			if (sEntries.find(_kExecuteKey) > -1) // Case 1: _kExecuteKey is a valid, existing Catalog name
@@ -147,17 +146,14 @@
 				    }
 				}
 
-				if (nMatchingTypeIndex > -1) // _kExecuteKey is a recognized type trigger
-				{
-					// Load _LastInserted first to get other parameters
-					if (sEntries.find(sLastEntry) > -1) {
-						setPropValuesFromCatalog(sLastEntry);
-					}
-					// Set the type based on the matched _kExecuteKey
-					sType.set(sTypes[nMatchingTypeIndex]);
-					// Show dialog for user to confirm/modify other parameters
-					showDialog(); 
-				}
+                                if (nMatchingTypeIndex > -1) // _kExecuteKey is a recognized type trigger
+                                {
+                                        // Set the type based on the matched _kExecuteKey
+                                        sType.set(sTypes[nMatchingTypeIndex]);
+                                        // Store values in the '_LastInserted' catalog and show dialog with that catalog selected
+                                        setCatalogFromPropValues(sLastEntry);
+                                        showDialog(sLastEntry);
+                                }
 				else // _kExecuteKey is unrecognized (not a catalog, not a type trigger)
 				{
 					// Fallback: try loading _LastInserted if available, then show dialog
