@@ -1,0 +1,5967 @@
+//region Part #1
+
+//region <History>
+// #Versions
+// 5.2 10.03.2025 HSB-23671 fastenerAssemblyEntities are created if fastener style is selected or changed , Author Thorsten Huck
+// 5.1 19.02.2025 HSB-23551 new properties to specify associated fastenerAssembly , Author Thorsten Huck
+// 5.0 22.04.2024 HSB-21873 bugfix detecting extreme planes when beveled , Author Thorsten Huck
+// 4.9 01.03.2024 HSB-19347 tooling improved for beveled, slotted and sunken tools , Author Thorsten Huck
+// 4.8 21.02.2024 HSB-19347 slot and conical slots revised , Author Thorsten Huck
+// 4.7 15.02.2024 HSB-19347 bugfix cone depth when depth or diameter = 0 , Author Thorsten Huck
+// 4.6 14.02.2024 HSB-19347 bugfix cone and sink depth when depth and diameter = 0  , Author Thorsten Huck
+// 4.5 14.02.2024 HSB-21152 bugfix cone and sink depth , Author Thorsten Huck
+// 4.4 12.02.2024 HSB-21152 opposite drill and cone added , Author Thorsten Huck
+// 4.3 12.02.2024 HSB-19347 intersecting genbeams detected by location, accepting any genbeam collection , Author Thorsten Huck
+// 4.2 08.01.2024 HSB-21057 bugfix explicit radius slotted holes , Author Thorsten Huck
+// 4.1 21.11.2023 HSB-20691 bugfix single tool conversion, duplicated circles rejected , Author Thorsten Huck
+// 4.0 21.11.2023 HSB-20691 new grips to alter depth, new options to insert single drill, new command to convert to single tools , Author Thorsten Huck
+// 3.9 08.11.2023 HSB-20581 new distribution mode 'Circles' distributes by selected circle entitities. , Author Thorsten Huck
+// 3.8 16.08.2023 HSB-19808 slots are exported as mortise if no cone angle is specidied , Author Thorsten Huck
+// 3.7 10.08.2023 HSB-19798 new grips to alter row extensions and to specify interdistance by grip , Author Thorsten Huck
+// 3.6 19.04.2023 HSB-18451 cone diameter can be adjusted , Author Thorsten Huck
+// 3.5 03.04.2023 HSB-18552 bugfix on slot distributions if sink is specified without depth , Author Thorsten Huck
+// 3.4 17.03.2023 HSB-18357 new context commands to add or remove obstacles of the distribution. tool will be deleted if invalidated by obstacles. New readonly property to show the quantity of drills , Author Thorsten Huck
+// 3.3 03.03.2023 HSB-18197 new property tool index for slotted holes , Author Thorsten Huck
+// 3.2 27.02.2023 HSB-18133 new command to Export/Import Settings  , Author Thorsten Huck
+// 3.1 27.02.2023 HSB-18133 new user attribute definition for tool overrides, new options to specify display settings , Author Thorsten Huck
+// 3.0 03.02.2023 HSB-17797 new dim requests for slotted holes , Author Thorsten Huck
+// 2.9 01.02.2023 HSB-17740 added new property and commands for tool definition , Author Thorsten Huck
+// 2.8 16.01.2023 HSB-17107 publishes map based angular dimrequests of cone, rotation and bevel, V25 compatible , Author Thorsten Huck
+// 2.6 16.01.2023 HSB-17107 publishes map based angular dimrequests of cone, rotation and bevel , Author Thorsten Huck
+// 2.5 20.12.2022 HSB-17390 slotted holes supported, cone drill workaround removed , Author Thorsten Huck
+// 2.4 16.12.2022 HSB-17403 defining polylines of sheets or panels will be excluded on insert , Author Thorsten Huck
+// 2.3 16.12.2022 HSB-17402 flipFace option on insert corrected , Author Thorsten Huck
+// 2.2 13.12.2022 HSB-17266 new distribution mode 'Vertex' added. This mode ignores the value of the interdistance and places the drills at each vertex point , Author Thorsten Huck
+// 2.1 08.12.2022 HSB-17266 Cone parameters improved , Author Thorsten Huck
+// 2.0 23.11.2022 HSB-16439 basic support of cone drills re-appended. Requires hsbDesign 25 or higher , Author Thorsten Huck
+// 1.5 21.11.2022 HSB-17110 grip based insertion improved , Author Thorsten Huck
+// 1.4 27.07.2022 HSB-16118 sinkholes considered for fastener creation , Author Thorsten Huck
+// 1.3 10.05.2022 HSB-15333 conedrill removed for compatibility with hsbDesign 24 , Author Thorsten Huck
+// 1.2 14.04.2022 HSB-14989 jig further improved , Author Thorsten Huck
+// 1.1 13.04.2022 HSB-14989 fastener guideline added, stack length improved , Author Thorsten Huckplco
+// 1.0 12.04.2022 HSB-14989 initial version for any type of genbeam , Author Thorsten Huck
+
+/// <insert Lang=en>
+/// Select genbeams to be drilled, then select additional genbeams and/or polylines which describe the drill path. If second selection remains empty one can draw a grip point based definition
+/// </insert>Lang=en>
+// This tsl creates a drill distribution based on intersecion to other genbeams, polylines or grip points
+// </summary>
+
+// commands
+// command to insert the tool
+// ^C^C(defun c:TSLCONTENT() (hsb_ScriptInsert "DrillDistribution")) TSLCONTENT
+// optional commands of this tool
+// ^C^C(defun c:TSLCONTENT() (hsb_RecalcTslWithKey (_TM "|Add Genbeams|") (_TM "|Select Tool|"))) TSLCONTENT
+// ^C^C(defun c:TSLCONTENT() (hsb_RecalcTslWithKey (_TM "|Remove genbeams|") (_TM "|Select Tool|"))) TSLCONTENT
+// ^C^C(defun c:TSLCONTENT() (hsb_RecalcTslWithKey (_TM "|Convert To Polyline|") (_TM "|Select Tool|"))) TSLCONTENT
+// stool^C^C(defun c:TSLCONTENT() (hsb_RecalcTslWithKey (_TM "|Convert To Grip Points|") (_TM "|Select Tool|"))) TSLCONTENT
+
+
+//endregion
+
+//region Constants
+	U(1,"mm");	
+	double dEps =U(.1);
+	int nDoubleIndex, nStringIndex, nIntIndex;
+	String sDoubleClick= "TslDoubleClick";
+	int bDebug=_bOnDebug;
+	// read a potential mapObject defined by hsbDebugController
+	{ 
+		MapObject mo("hsbTSLDev" ,"hsbTSLDebugController");
+		if (mo.bIsValid()){Map m = mo.map(); for (int i=0;i<m.length();i++) if (m.getString(i)==scriptName()){bDebug = true;	break;}}
+		if(bDebug)reportMessage("\n"+ scriptName() + " starting " + _ThisInst.handle() + " in graphics3D = " + in3dGraphicsMode());		
+	}
+	String sDefault =T("|_Default|");
+	String tLastInserted =T("|_LastInserted|");	
+	String category = T("|General|");
+	String sNoYes[] = { T("|No|"), T("|Yes|")};
+	
+	//region Color and view	
+	int bIsDark;{int n = getBackgroundTrueColor();bIsDark = ((rgbR(n) + rgbB(n) + rgbG(n)) / 3 < 127);}
+	int grey = bIsDark?rgb(199,200,202):rgb(99,100,102);
+	int white = bIsDark?rgb(255,255,255):rgb(0,0,0);	
+	
+	int lightblue = rgb(204,204,255);
+	int blue = rgb(69,84,185);	
+	int darkblue = rgb(26,50,137);	
+	int yellow = rgb(241,235,31);
+	int darkyellow = rgb(254, 204, 102);
+	int orange = rgb(242,103,34);
+	int red = rgb(205,32,39);
+	int purple = rgb(147,39,143);
+	int petrol = rgb(16,86,137);
+	int green = rgb(19,155,72);	
+	int darkyellow3D = bIsDark?rgb(157, 137, 88):rgb(254,234,185);
+	Vector3d vecXView = getViewDirection(0);
+	Vector3d vecYView = getViewDirection(1);
+	Vector3d vecZView = getViewDirection(2);
+	double dViewHeight = getViewHeight();	
+	
+	
+	String kReferenceFace = T("|Bottom Face|");
+	String kTopFace =  T("|Top Face|");
+	String kFormat="Format", kView = "View", kStereotype="Stereotype", kShopdrawing="Shopdrawing", kDisabled=T("<|Disabled|>");
+	String kTextCumm = "TextCumm", kTextDelta = "TextDelta", kNode="Node", kNodes="Node[]";	
+	String kRevertDirection="revertDirection", tFixed = T("|Fixed|"), tEven=T("|Even|"), tVertex= T("|Vertex Points|"), tCircle = T("|Circles|"), tFreeDrill = T("|Free Drill|");
+	int nTick = getTickCount();
+	
+	String tDefaultEntry =T("<|Default|>");
+	
+	
+	String sDistributionFormat = "@(Quantity-2)x @("+T("|Diameter|")+")";
+	
+	String sDiameterName=T("|Diameter|"),sDepthName=T("|Depth|"),sToolName=T("|Tool Definition|"),
+		sSinkDiameterName=T("|Diameter Sink|"),sSinkDepthName=T("|Depth Sink|"),sAngleName=T("|Cone Angle|");	
+		
+	String tPathOnly = T("|Distribution Path|"), tContourOnly = T("|Tool Contour|"), tAxisOnly= T("|Tool Axis|");
+	String sDisplayStyles[] = {tPathOnly, tContourOnly, tAxisOnly, tPathOnly + "+"+ tAxisOnly, tContourOnly + "+" +tAxisOnly};		
+	sDisplayStyles=sDisplayStyles.sorted();
+	sDisplayStyles.insertAt(0, tDefaultEntry);
+	//endregion 	
+	
+	
+	// Fastener
+	String kManufacturer = "Manufacturer", kFamily = "Family", kDiameter= "Diameter", kModel = "Model", kLength = "Length";
+	String sExistingFastenerAssemblyDefs[] = FastenerAssemblyDef().getAllEntryNames().sorted();	
+	
+	
+	String tDisabled = T("<|Disabled|>"), tAddNew = T("<|Add New|>");	
+	String tFDExact = T("<|Show styles = Diameter|>"), tFDSmaller= T("<|Show styles <= Diameter|>"), tFDGreater=T("<|Show styles >= Diameter|>"), tFDAll = T("<|Show all styles|>");
+	String sDiameterFilters[] = { tFDExact, tFDSmaller, tFDGreater, tFDAll};
+ //end Constants//endregion
+
+//region DialogMode
+	int nDialogMode = _Map.getInt("DialogMode");
+	int bIsDialog = nDialogMode == 1;
+	if (nDialogMode>1)
+	{ 	
+		if (nDialogMode == 2) //specify index when triggered to get different dialogs
+		{
+			setOPMKey("Shopdrawing");
+
+			String sDimStereotypes[0];
+			{ 
+				String styles[] = MultiPageStyle().getAllEntryNames();
+				for (int i=0;i<styles.length();i++) 
+				{ 
+					MultiPageStyle mps(styles[i]);
+					String stereotypes[] = mps.getListOfStereotypeOverridesChainDim();
+					for (int j=0;j<stereotypes.length();j++) 
+					{ 
+						if (sDimStereotypes.findNoCase(stereotypes[j],-1)<0)
+							sDimStereotypes.append(stereotypes[j]); 			 
+					}//next j	
+
+				}//next i
+
+				sDimStereotypes = sDimStereotypes.sorted();
+				sDimStereotypes.insertAt(0, "*");	
+				sDimStereotypes.insertAt(0,kDisabled);					
+			}	
+
+		category = T("|Dimension|");	
+			String sFormatName=T("|Format|");	
+			PropString sFormat(nStringIndex++, sDistributionFormat, sFormatName);	
+			sFormat.setDescription(T("|Defines the Format|"));
+			sFormat.setCategory(category);
+			
+			String sStereotypeName=T("|Stereotype|");	
+			PropString sStereotype(nStringIndex++, sDimStereotypes, sStereotypeName);	
+			sStereotype.setDescription(T("|Defines the stereotype|"));
+			sStereotype.setCategory(category);
+			
+//			String sViewName=T("|View|");	
+//			PropString sView(nStringIndex++, sViews, sViewName);	
+//			sView.setDescription(T("|Defines the View|"));
+//			sView.setCategory(category);
+//			int nView = sViews.find(sView);
+//			if (nView<0) sView.set(0);
+
+			
+		}		
+		
+		else if (nDialogMode == 3)
+		{ 
+			String sColorName=T("|Color|");	
+			PropInt nColor(nIntIndex++, 160, sColorName);	
+			nColor.setDescription(T("|Defines the index color of the tool.|") + T(", |0 = byBlock|"));
+			nColor.setCategory(category);
+			
+			String sTransparencyName=T("|Transparency|");	
+			PropInt nTransparency(nIntIndex++, 50, sTransparencyName);	
+			nTransparency.setDescription(T("|Defines the Transparency of the tool in the range of 0...100|"));
+			nTransparency.setCategory(category);
+			
+			
+			String sStyleName=T("|Style|");	
+			PropString sStyle(nStringIndex++, sDisplayStyles, sStyleName);	
+			sStyle.setDescription(T("|Defines which graphics will be drawn|"));
+			sStyle.setCategory(category);
+
+
+		}
+		return;	
+	}
+//End DialogMode//endregion
+
+//region Functions /#fu
+
+	//region Fastener Functions
+
+
+//region Function MainDiameter
+	// returns the main diameter of a fastenerAssemblyDefinition
+	double MainDiameter(String definition)
+	{ 
+		double mainDiameter;	
+		FastenerAssemblyDef fadef(definition); 
+		if (fadef.bIsValid())
+		{ 
+			FastenerListComponent flc = fadef.listComponent();
+			FastenerComponentData fcd=flc.componentData();
+			mainDiameter = fcd.mainDiameter();
+		}		
+		return mainDiameter;
+	}//endregion
+
+//region Function GetLengthFromArticleNumber
+	// returns the length of the current article, 0 = invalid
+	double GetLengthFromArticleNumber(FastenerAssemblyEnt fae )
+	{ 
+		double dLength;
+		FastenerAssemblyDef fadef(fae.definition()); 
+		if (fadef.bIsValid())
+		{ 
+			FastenerListComponent flc = fadef.listComponent();
+			FastenerArticleData articleDataSet[] = flc.articleDataSet();
+			for (int i=0;i<articleDataSet.length();i++) 
+			{ 
+				FastenerArticleData fad = articleDataSet[i]; 
+				if(fad.articleNumber() == fae.articleNumber())
+				{ 
+					dLength= fad.fastenerLength(); 
+					break;
+				}
+			}//next i
+		}			
+		return dLength;
+	}//endregion
+
+
+
+//region Function IsSimpleFastener
+	// returns wether the definition describes a simple or an assembly fastene
+	// woodscrews are considered to be simple fasteners
+	int IsSimpleFastener(String definition)
+	{ 
+		int bIsSimpleFastener;
+		FastenerAssemblyDef fadef(definition);
+		if (fadef.bIsValid())
+		{ 
+			FastenerSimpleComponent fscHeads[] = fadef.headComponents();
+			FastenerSimpleComponent fscTails[] = fadef.tailComponents();
+			bIsSimpleFastener = fscHeads.length() <1 && fscTails.length() <1; 			
+		}		
+		return bIsSimpleFastener;
+	}//endregion
+
+//region Function GetDefinionsByDiameter
+	// returns definitions which match the given diameter
+	// filterIndex: 0=tFDExact, 1=tFDSmaller, 2=tFDGreater, 3=tFDAll
+	String[] GetDefinionsByDiameter(double diameter, int filterIndex, int bSimpleOnly)
+	{ 
+		String definitions[0];
+		
+		if (diameter<=dEps)
+			filterIndex = 3;
+		
+		for (int i=0;i<sExistingFastenerAssemblyDefs.length();i++) 
+		{ 
+			String definition = sExistingFastenerAssemblyDefs[i];
+			
+			
+			int bAccepted = bSimpleOnly && IsSimpleFastener(definition);
+ 
+			double mainDiameter = MainDiameter(definition);
+			
+			if (filterIndex == 0)// 0=tFDExact
+				bAccepted = abs(mainDiameter - diameter) < dEps;
+			else if (filterIndex == 1)// 1=tFDSmaller
+				bAccepted = abs(mainDiameter - diameter) < dEps || mainDiameter<=diameter;
+			else if (filterIndex == 2)// 2=tFDGreater
+				bAccepted = abs(mainDiameter - diameter) < dEps || mainDiameter>=diameter;
+			//else if (filterIndex == 3)// 3=tFDAll
+			// accepted by state of simpleOnly
+
+			if (bAccepted)
+				definitions.append(definition);
+		}//next i
+		definitions = definitions.sorted();
+		return definitions;
+	}//endregion
+
+//region Function GetLastDefinition
+	// returns the last selected definition if found
+	String GetLastDefinition(Map& mapFilter, String definitions[])
+	{ 
+		String definition = tDisabled;
+		String lastEntry = mapFilter.getString("lastEntry");
+		if (definitions.findNoCase(lastEntry,-1)>-1)
+			definition = lastEntry;
+		mapFilter.removeAt("Modified", true);				
+		return definition;
+	}//endregion
+
+//region Function CollectDefinitionOptions
+	// adds additional options to the list of definitions
+	void AddDefinitionOptions(String& definitions[], int index)
+	{ 
+		definitions.insertAt(0,tDisabled);
+		for (int i=sDiameterFilters.length()-1; i>=0 ; i--) 
+		{
+			if (i==index){ continue;}
+			definitions.insertAt(1,sDiameterFilters[i]);		
+		}
+		//sDefinitions.append(tAddNew);// TODO
+		return;
+	}//endregion
+
+
+//region Function FastenerLengthList
+	// returns a sorted list with all available fastener length and thread values, duplicates are ignored"
+	double[] FastenerLengthList(String definition, double& dThreadLengths[])
+	{ 
+		double dFastenerLengths[0];
+		dThreadLengths.setLength(0);
+		
+		FastenerAssemblyDef fadef(definition); 
+		if (fadef.bIsValid())
+		{ 
+			FastenerListComponent flc = fadef.listComponent();
+			FastenerArticleData articleDataSet[] = flc.articleDataSet();
+			for (int i=0;i<articleDataSet.length();i++) 
+			{ 
+				FastenerArticleData fad = articleDataSet[i]; 
+				double length= fad.fastenerLength();
+				double threadLength= fad.threadLength();
+				if(dFastenerLengths.find(length)<0)
+				{
+					dFastenerLengths.append(length);
+					dThreadLengths.append(threadLength);
+				}
+			}//next i
+		}
+	
+	// order ascending by length
+		for (int i=0;i<dFastenerLengths.length();i++) 
+			for (int j=0;j<dFastenerLengths.length()-1;j++) 
+				if (dFastenerLengths[j]>dFastenerLengths[j+1])
+				{	
+					dFastenerLengths.swap(j, j + 1);
+					dThreadLengths.swap(j, j + 1);					
+				}
+
+		return dFastenerLengths;
+	}//endregion
+
+//region Function GetArticleNumberFromLength
+	// returns the articlenumber if an article of the given length can be found and sets the detected listComponent
+	String GetArticleNumberFromLength(String definition, double dLength, FastenerListComponent& flc)
+	{ 
+		String articleNumber;
+		FastenerAssemblyDef fadef(definition); 
+		if (fadef.bIsValid())
+		{ 
+			flc = fadef.listComponent();
+			FastenerArticleData articleDataSet[] = flc.articleDataSet();
+			for (int i=0;i<articleDataSet.length();i++) 
+			{ 
+				FastenerArticleData fad = articleDataSet[i]; 
+				double length= fad.fastenerLength(); 
+				if(abs(dLength-length)<dEps)
+				{ 
+					articleNumber = fad.articleNumber();
+					break;
+				}
+			}//next i
+		}			
+		return articleNumber ;
+	}//endregion
+
+
+
+
+
+
+
+	//End Fastener Functions //endregion 
+
+
+
+
+
+	
+	//region Function drawSolidJig
+	// draws a solid jig
+	void drawSolidJig(Body bd, Display dp)
+	{ 
+		if(!bd.isNull())
+		{
+			dp.draw(bd);
+			PlaneProfile pp = bd.shadowProfile(Plane(bd.ptCen(), vecZView));
+			Display dp2(-1);
+			dp2.trueColor(lightblue, 80);
+			dp2.draw(pp, _kDrawFilled);
+		}
+	}//End drawSolidJig //endregion	
+	
+
+	//region Function getRoundedShape
+	// returns a pline describing a circle or a rounded box
+	// pp: a planeprofile carrying the coordSys and center location
+	// dX: size in X
+	// dY: size in Y
+	PLine getRoundedShape(double dRadius, double dX, double dY, PlaneProfile pp)
+	{ 
+		CoordSys cs = pp.coordSys();
+		Vector3d vecX = cs.vecX();
+		Vector3d vecY = cs.vecY();
+		Vector3d vecZ = cs.vecZ();
+		Point3d ptCen= cs.ptOrg();
+
+		PLine plShape(vecZ);
+
+	// accept 0 as default value for (half) circle definitions
+		if (dX <= 0) dX = 2*dRadius;
+		if (dY <= 0) dY = 2*dRadius;
+
+	// not possible to round off, create squared
+		if (dX<2*dRadius ||dY<2*dRadius)
+			dRadius = 0;
+			
+		double dXR = .5*dX-dRadius;
+		double dYR = .5*dY-dRadius;			
+
+	// Circle
+		if (dX==dY && dX==2*dRadius)
+			plShape.createCircle(ptCen, vecZ, dRadius);	
+	// Box			
+		else if (dRadius <= 0)
+		{
+			Vector3d vec = .5 * (vecX * dX + vecY * dY);
+			plShape.createRectangle(LineSeg(ptCen - vec, ptCen + vec), vecX, vecY);
+		}
+	// Slot
+		else if (abs(dX - 2*dRadius) < dEps || abs(dY - 2*dRadius)<dEps)
+		{ 	
+			CoordSys rot; 
+			int bXoverY = dX > dY ? 1 : 0;
+			if(bXoverY)
+				dYR = .5 * dY;
+			else
+			{
+				rot.setToRotation(90, vecZ, ptCen);
+				dYR = .5 * dX;		
+				dXR = .5*dY-dRadius;			
+			}
+
+			Point3d pts[0];
+			pts.append(ptCen - vecX * dXR - vecY * dYR);
+			pts.append(ptCen + vecX * dXR - vecY * dYR);
+			pts.append(ptCen + vecX * dXR + vecY * dYR);
+			pts.append(ptCen - vecX * dXR + vecY * dYR);
+			pts.append(ptCen - vecX * dXR - vecY * dYR);
+
+			for (int i=0;i<pts.length();i++) 
+			{ 
+				pts[i].transformBy(rot);
+				if (i==0)
+					plShape.addVertex(pts[i]);	
+				else if (i%2==1)
+					plShape.addVertex(pts[i]);	
+				else
+					plShape.addVertex(pts[i],tan(45));					
+			}//next i
+			plShape.close();
+		}	
+	// Rounded Box
+		else
+		{ 
+			int bXoverY = dX > dY ? 1 : 0;
+			Vector3d vecA = bXoverY?vecX*dXR:vecY*dYR;
+			Vector3d vecB = bXoverY?vecY*dYR:-vecX*dXR;
+			
+			Vector3d vec = vecA + vecB;
+			plShape.createRectangle(LineSeg(ptCen-vec, ptCen+vec), bXoverY?vecX:vecY, bXoverY?vecY:-vecX);
+			plShape.offset(-dRadius, true);				
+			
+		}	
+		//plShape.vis(150);
+		return plShape;
+	}//End getRoundedShape //endregion
+
+	//region Function getRoundedBox
+	// modifies a list of plines describing arcs, straights and toolling plines
+	// pp: a planeprofile carrying the coordSys and center location
+	// dX: size in X
+	// dY: size in Y
+	void getRoundedBox(double dRadius, double dX, double dY, PlaneProfile pp, PLine& plShape, PLine& plArcs[], PLine& plStraights[],PLine& plToolDefs[],  Point3d& ptArcCens[])
+	{
+
+		CoordSys cs = pp.coordSys();
+		Vector3d vecX = cs.vecX();
+		Vector3d vecY = cs.vecY();
+		Vector3d vecZ = cs.vecZ();
+		Point3d ptCen= cs.ptOrg();
+		
+		plShape=PLine(vecZ);
+		plArcs.setLength(0);
+		plStraights.setLength(0);
+		plToolDefs.setLength(0);
+		ptArcCens.setLength(0);
+		
+		// Validate input
+		if (dRadius<=0 && (dX<=0 || dY<0))
+		{ 
+			return;
+		}
+	
+	// accept default half circle definitions
+		if (dX <= 0) dX = 2*dRadius;
+		if (dY <= 0) dY = 2*dRadius;		
+		
+	// not possible to round off, create squared
+		if (dX<2*dRadius ||dY<2*dRadius)
+			dRadius = 0;
+
+		double dXR = .5*dX-dRadius;
+		double dYR = .5*dY-dRadius;
+
+	// Circle
+		if (dX==dY && dX==2*dRadius)
+		{
+			plShape.createCircle(ptCen, vecZ, dRadius);	
+			ptArcCens.append(ptCen);
+			{ 
+				PLine pl(vecZ);
+				pl.addVertex(ptCen + vecX * .5 * dX);
+				pl.addVertex(ptCen - vecX * .5 * dX, tan(45));
+				plToolDefs.append(pl);	
+				plArcs.append(pl);	
+				
+			}
+			{ 
+				PLine pl(vecZ);
+				pl.addVertex(ptCen - vecX * .5 * dX);
+				pl.addVertex(ptCen + vecX * .5 * dX, tan(45));
+				plToolDefs.append(pl);		
+				plArcs.append(pl);	
+			}
+			
+		}
+	// Box
+		else if (dRadius<=0)
+		{
+			Vector3d vec = .5 * (vecX * dX + vecY * dY);
+			plShape.createRectangle(LineSeg(ptCen-vec, ptCen+vec), vecX, vecY);
+			plToolDefs.append(plShape);
+			
+		}
+	// Slot
+		else if (abs(dX - 2*dRadius) < dEps || abs(dY - 2*dRadius)<dEps)
+		{ 	
+			CoordSys rot; 
+			int bXoverY = dX > dY ? 1 : 0;
+			if(bXoverY)
+				dYR = .5 * dY;
+			else
+			{
+				rot.setToRotation(90, vecZ, ptCen);
+				dYR = .5 * dX;		
+				dXR = .5*dY-dRadius;			
+			}
+
+			Point3d pts[0];
+			pts.append(ptCen - vecX * dXR - vecY * dYR);
+			pts.append(ptCen + vecX * dXR - vecY * dYR);
+			pts.append(ptCen + vecX * dXR + vecY * dYR);
+			pts.append(ptCen - vecX * dXR + vecY * dYR);
+			pts.append(ptCen - vecX * dXR - vecY * dYR);
+
+			for (int i=0;i<pts.length();i++) 
+			{ 
+				pts[i].transformBy(rot);
+				if (i==0)
+					plShape.addVertex(pts[i]);	
+				else if (i%2==1)
+					plShape.addVertex(pts[i]);	
+				else
+					plShape.addVertex(pts[i],tan(45));					
+			}//next i
+			plShape.close();
+
+			PLine plTool(vecZ);
+			for (int i=0;i<pts.length()-1;i++) 
+			{ 
+				Point3d pt1 = pts[i]; 	
+				Point3d pt2= pts[i+1];				pt1.vis(i);//pt2.vis(2);
+				Point3d ptm = (pt1 + pt2) * .5;		//ptm.vis(6);
+				int bArc = (plShape.closestPointTo(ptm) - ptm).length() > dEps;
+				
+				PLine pl(vecZ);
+				pl.addVertex(pt1);
+				
+				if (i==0)
+				{
+					plTool.addVertex(ptm);
+				}
+				else if (i==2)
+				{
+					plTool.addVertex(ptm);	
+					
+					double d = plTool.length()*.5;
+					PLine plt = plTool;
+					plt.trim(d, true);				
+					plToolDefs.append(plt);
+					plt = plTool;
+					plt.trim(d, false);				
+					plToolDefs.append(plt);
+					
+					plTool = PLine(vecZ);
+					plTool.addVertex(ptm);		//plTool.vis(6);				
+				}
+
+				if (bArc)
+				{
+					pl.addVertex(pt2, tan(45));	
+					plTool.addVertex(pt2, tan(45));	
+					plArcs.append(pl);				//plTool.vis(22);
+				}
+				else
+				{
+					pl.addVertex(pt2);
+					plTool.addVertex(pt2);					
+					plStraights.append(pl);
+				}
+				
+				if (i==pts.length()-2 && plToolDefs.length()>0)
+				{	
+					plTool.addVertex(plToolDefs.first().ptStart());
+					
+					double d = plTool.length()*.5;
+					PLine plt = plTool;
+					plt.trim(d, true);				
+					plToolDefs.append(plt);
+					plt = plTool;
+					plt.trim(d, false);				
+					plToolDefs.append(plt);
+				}
+	
+				
+			}//next i
+		}
+	
+	// Rounded Box
+		else
+		{ 
+			int bXoverY = dX > dY ? 1 : 0;
+			Vector3d vecA = bXoverY?vecX*dXR:vecY*dYR;
+			Vector3d vecB = bXoverY?vecY*dYR:-vecX*dXR;
+			
+			Vector3d vec = vecA + vecB;
+			plShape.createRectangle(LineSeg(ptCen-vec, ptCen+vec), bXoverY?vecX:vecY, bXoverY?vecY:-vecX);
+
+			ptArcCens = plShape.vertexPoints(true);
+			plShape.offset(-dRadius, true);				//plShape.vis(150);
+			Point3d pts[] = plShape.vertexPoints(false);
+			PLine plTool(vecZ);
+			for (int i=0;i<pts.length()-1;i++) 
+			{ 
+				Point3d pt1 = pts[i]; 	//pt1.vis(2);
+				Point3d pt2= pts[i+1];	//pt2.vis(2);
+				Point3d ptm = (pt1 + pt2) * .5;
+				int bArc = (plShape.closestPointTo(ptm) - ptm).length() > dEps;
+				
+				PLine pl(vecZ);
+				pl.addVertex(pt1);
+				
+				if (i==0)
+					plTool.addVertex(ptm);
+				else if (i==4)
+				{
+					plTool.addVertex(ptm);	
+					plToolDefs.append(plTool);
+					plTool = PLine(vecZ);
+					plTool.addVertex(ptm);						
+				}
+
+				if (bArc)
+				{
+					pl.addVertex(pt2, tan(22.5));	
+					plTool.addVertex(pt2, tan(22.5));	
+					plArcs.append(pl);
+				}
+				else
+				{
+					pl.addVertex(pt2);
+					plTool.addVertex(pt2);					
+					plStraights.append(pl);
+				}
+				
+				if (i==pts.length()-2 && plToolDefs.length()>0)
+				{	
+					plTool.addVertex(plToolDefs.first().ptStart());
+					//plTool.vis(2);
+					plToolDefs.append(plTool);
+				}
+	
+				
+			}//next i
+			
+		}
+		
+
+		return;
+		
+	}//End getRoundedBox //endregion
+
+
+	//region Function combineShape
+	// modifies the planeprofile by a union of a contactFace
+	// t: the tslInstance to 
+	void combineShape(Plane pn, Body& bd, PlaneProfile& pp)
+	{ 
+		PlaneProfile ppIn = pp;
+		double area = ppIn.area();
+		Cut ct(pn.ptOrg(), pn.normal());
+		if (!bd.isNull())
+		{
+			bd.addTool(ct, 0);
+			//bd.vis(1);
+		}
+		if (!bd.isNull())
+		{ 
+			PlaneProfile ppx = bd.extractContactFaceInPlane(pn, dEps);
+			if (area<pow(dEps,2))
+				pp=ppx;
+			else
+			{ 
+				pp.unionWith(ppx);
+				if (pp.area()<=area)
+					pp=ppIn;	
+			}
+		}
+	
+	}//End combineShape //endregion
+
+	//region Function setBevelRotation
+	// returns
+	// t: the tslInstance to 
+	double setBevelRotation(Vector3d vecZT, Vector3d vecFace,Vector3d vecX,Vector3d vecZ,  double& rotation)
+	{ 
+		double bevel= 180-vecZT.angleTo(vecFace);
+		rotation = 0;
+		if (abs(bevel) > 0 && abs(bevel) < 90)
+		{
+			Vector3d vecXT = vecZT.crossProduct(vecZ).crossProduct(-vecZ);
+			vecXT.normalize();
+			rotation = 180 - vecX.angleTo(vecXT, vecFace);
+		}
+		return bevel;
+	}//End setBevelRotation //endregion
+
+	//region Function acceptCircle
+	// accepts a circle if its not matching any of the loactions, alignments and radii
+	int acceptCircle(Point3d pt, double radius, Vector3d vecN, Point3d& ptCens[],double& radii[], Vector3d& vecNs[] )
+	{ 
+		int out=true;
+		
+		int bFound;
+		for (int i=0;i<ptCens.length();i++) 
+		{ 
+			if ((pt-ptCens[i]).length()>dEps){continue;}
+			if (!vecN.isParallelTo(vecNs[i])){continue;}
+			if (abs(radius-radii[i])>dEps){continue;}
+			
+			out = false;
+			break; 
+		}//next i
+		
+		if (out)
+		{ 
+			ptCens.append(pt);
+			radii.append(radius);
+			vecNs.append(vecN);		
+		}
+	
+		return out;
+	}//End acceptCircle //endregion
+
+//	//region Function getExtremePlanes
+//	// returns the extreme intersectin genbeams wiht its extreme faces/planes
+//	// t: the tslInstance to 
+//	void getExtremePlanes(GenBeam& gbs[], Plane& pn1, Plane& pn2, Vector3d vecDir, Point3d ptAxis)
+//	{ 
+//		if (gbs.length()<1 ||vecDir.bIsZeroLength())
+//			return;
+//		Plane pns[0]; // the planes at center aligned to the intersecting genbeams
+//		double dDs[0];
+//		for (int x=0;x<gbs.length();x++) 
+//		{ 
+//			GenBeam& g = gbs[x];
+//			
+//			Point3d ptCen = g.ptCen();
+//			int bXParallel = vecDir.isParallelTo(g.vecX());
+//			double dD = bXParallel?g.solidLength():g.dD(vecDir);						
+//			Vector3d vecN = bXParallel? vecDir : g.vecD(vecDir);
+//			Plane pn(ptCen, vecN);
+//			Line(ptAxis, vecDir).hasIntersection(pn, ptCen);
+//			pn.transformBy(ptCen - pn.ptOrg());
+//			
+//			pns.append(pn);
+//			dDs.append(dD);
+//			//vecN.vis(pn.ptOrg(), x);					 
+//		}//next x	
+//		
+//	// order in dir
+//		for (int i=0;i<gbs.length();i++) 
+//			for (int j=0;j<gbs.length()-1;j++) 
+//			{
+//				double d1 = vecDir.dotProduct(pns[j].ptOrg()-_Pt0);
+//				double d2 = vecDir.dotProduct(pns[j+1].ptOrg()-_Pt0);
+//				
+//				if (d1>d2)
+//				{ 
+//					gbs.swap(j, j + 1);
+//					pns.swap(j, j + 1);
+//					dDs.swap(j, j + 1);
+//				}
+//			}		
+//		
+//	// Get planes of first and last
+//		pn1 = pns.first();
+//		pn1.transformBy(-pn1.normal() * .5 * dDs.first());
+//		//if(bDebug)pn1.vis(40);
+//
+//		pn2 = pns.last();
+//		pn2.transformBy(pn2.normal() * .5 * dDs.last());
+//		//if(bDebug)pn2.vis(150);
+//
+//		return;
+//	}//End getExtremePlanes //endregion
+
+	//region Function getIntersectingPlanes
+	// returns the extreme planes along the drill axis
+	// g: the genbeam
+	// vecDir: the direction vector
+	// ptAxis: point on drill axis
+	Point3d getIntersectingPlanes(GenBeam g, Vector3d vecDir, Point3d ptAxis, Plane& pn1, Plane& pn2)
+	{ 
+		
+		Sip p = (Sip)g;
+		Beam b = (Beam)g;
+		Sheet s = (Sheet)g;		
+		Point3d ptCen = g.ptCen();
+		Line lnDir(ptAxis, vecDir);
+		Vector3d vecX= g.vecX();
+		Vector3d vecY = g.vecY();
+		Vector3d vecZ = g.vecZ();
+		int bIsPerpendicularY = vecDir.isPerpendicularTo(vecY);
+		int bIsPerpendicularZ = vecDir.isPerpendicularTo(vecZ);
+		int bIsParallelZ = vecDir.isParallelTo(vecZ);
+		int bIsParallelX = vecDir.isParallelTo(vecX);		
+
+		Body bd = g.envelopeBody(false, true);
+		Point3d ptsX[]=bd.intersectPoints(lnDir);
+		ptsX = lnDir.orderPoints(ptsX, dEps);
+		if (ptsX.length()>2)
+			ptsX.swap(1, ptsX.length() - 1);
+		ptsX.setLength(2);	
+		
+	// Panel
+		if (p.bIsValid())
+		{ 
+			Body bd = p.envelopeBody(false, true);
+			if (bIsPerpendicularZ)
+			{ 
+				Vector3d vecPerp = vecDir.crossProduct(-vecZ);
+				//ptsX = p.plEnvelope().intersectPoints(Plane(ptAxis, vecPerp));
+
+				SipEdge edges[] = p.sipEdges();
+				
+				int bHasPlanes[2];
+				for (int ab=0;ab<ptsX.length();ab++) 
+				{
+					Point3d ptx = ptsX[ab];
+					for (int i=0;i<edges.length();i++) 
+					{ 
+						SipEdge& e = edges[i];
+						Point3d pt = e.ptMid();
+						Vector3d normal = e.vecNormal();
+						if (abs(normal.dotProduct(pt-ptx))>dEps)
+						{ 
+							//pt.vis(1);
+							continue;
+						}
+						Plane pn(pt, normal);
+						PlaneProfile pp = bd.extractContactFaceInPlane(pn, dEps);
+						if (pp.pointInProfile(pt)!=_kPointOutsideProfile)
+						{ 
+							if (ab==0)
+							{
+								pn1= pn;
+							}
+							else 
+							{
+								pn2= pn;
+							}
+							bHasPlanes[ab] = true;
+							break;
+						}
+					}//next i
+					if (bHasPlanes[ab]) { continue;}
+					
+				// fall back to closest ring	
+					int n = p.findClosestEdgeIndex(ptx);
+					if (n>-1)
+					{
+						//edges[n].plEdge().vis(6);
+						Point3d ptx;
+						Plane pn(edges[n].ptMid() ,edges[n].vecNormal());
+						lnDir.hasIntersection(pn, ptx);
+						pn.transformBy(ptx - pn.ptOrg());
+						if (ab==0)pn1= pn;
+						else pn2= pn;
+						
+					}					
+					
+					
+				}
+
+			}
+			else
+			{ 
+				Vector3d vecN = vecZ;
+				if (vecN.dotProduct(vecDir) > 0) vecN *= -1;
+				Point3d ptx = ptCen;
+				lnDir.hasIntersection(Plane(ptCen + vecN*.5 * p.dH(), vecN), ptx);
+				pn1 = Plane(ptx ,- vecZ);
+				
+				vecN *= -1;
+				ptx = ptCen;
+				lnDir.hasIntersection(Plane(ptCen + vecN*.5 * p.dH(), vecN), ptx);
+				pn2 = Plane(ptx ,vecZ);
+			}
+		}
+
+	// Beam
+		else if (b.bIsValid())
+		{
+			double dD = bIsParallelX?g.solidLength():g.dD(vecDir);						
+			Vector3d vecN = bIsParallelX? vecDir : g.vecD(vecDir);
+			{ 
+				Point3d ptx = ptsX.first();
+				LineBeamIntersect lbi(ptx, vecDir, b);	//vecDir.vis(ptx,4);
+				int num = lbi.nNumPoints();
+				int bHasContact = lbi.bHasContact();
+				
+				if (num>0 && bHasContact)
+				{ 
+					vecN = -lbi.vecNrm1();
+					
+				// HSB-21873 get normal to beam surface	
+					Quader qdr(ptCen, vecX, vecY, vecZ, bd.lengthInDirection(vecX), bd.lengthInDirection(vecY),bd.lengthInDirection(vecZ),0,0,0 );
+					Vector3d vecFaces[] ={ vecX, vecY, vecZ, - vecX, - vecY ,- vecZ};
+					for (int i=0;i<vecFaces.length();i++) 
+					{ 
+						Vector3d vecFace = vecFaces[i];
+						Plane pnFace = qdr.plFaceD(vecFace);
+						if(vecFace.dotProduct(pnFace.ptOrg()-ptx)<dEps)
+						{ 
+							vecN = vecFace;
+							break;
+						}
+						 
+					}//next i
+					
+					//ptx = lbi.pt1();			
+					pn1=Plane(ptx, vecN);
+					//vecN.vis(ptx, 2);
+					
+				}
+				else
+				{
+					pn1=Plane(ptCen-vecN*.5*dD, -vecN);
+					Line(ptAxis, vecDir).hasIntersection(pn1, ptx);
+					pn1.transformBy(ptx - pn1.ptOrg());
+					
+				}
+
+				
+				//pn1.vis(1);
+			}
+			{
+				Point3d ptx = ptsX.last();
+				LineBeamIntersect lbi(ptx, -vecDir, b);
+				int num = lbi.nNumPoints();
+				int bHasContact = lbi.bHasContact();
+				
+				if (num>0 && bHasContact)
+				{ 
+					vecN = -lbi.vecNrm1();
+					//ptx = lbi.pt1();			
+					pn2=Plane(ptx, vecN);
+					
+				}
+				else
+				{ 
+					pn2=Plane(ptCen+vecN*.5*dD, vecN);
+					Line(ptAxis, vecDir).hasIntersection(pn2, ptx);
+					pn2.transformBy(ptx - pn2.ptOrg());	
+					//pn2.vis(1);
+								
+				}
+				//pn2.vis(3);	
+			}
+		}
+
+	// Sheet
+		else if (s.bIsValid())
+		{ 
+			if (bIsPerpendicularZ)
+			{ 
+				Point3d pts[0];
+				PLine plEnvelope = s.plEnvelope();
+				Vector3d vecPerp = vecDir.crossProduct(-vecZ);
+				pts = plEnvelope.intersectPoints(Plane(ptAxis, vecPerp));
+				pts = lnDir.orderPoints(pts, dEps);
+				if (pts.length() < 1)return false;
+				else if (pts.length()>2)
+					pts.swap(1, pts.length() - 1);
+				pts.setLength(2);
+				
+				for (int ab=0;ab<pts.length();ab++) 
+				{ 
+					Point3d ptx = pts[ab];
+					Vector3d vecTan = plEnvelope.getTangentAtPoint(pts[ab]);
+					Vector3d vecN = vecTan.crossProduct(-vecZ);
+					if (vecN.dotProduct(vecDir) < 0)vecN *= -1;
+					Plane pn(ptx ,(ab==0?-1:1)*vecN);
+					
+					Line(ptAxis, vecDir).hasIntersection(pn, ptx);
+					pn.transformBy(ptx - pn.ptOrg());	
+					
+					if (ab==0)pn1= pn;
+					else pn2= pn;
+				}//next ab				
+			}
+			else
+			{ 
+				Vector3d vecN = vecZ;
+				if (vecN.dotProduct(vecDir) > 0) vecN *= -1;
+				
+				Point3d ptx = ptsX.first();		//PLine(ptx,_PtW).vis(40);
+				lnDir.hasIntersection(Plane(ptCen + vecN*.5 * p.dH(), vecN), ptx);
+				pn1 = Plane(ptx ,vecN);
+				//pn1.vis(1);
+				
+				ptx = ptsX.last();				//PLine(ptx,_PtW).vis(60);
+				vecN *= -1;
+				lnDir.hasIntersection(Plane(ptCen + vecN*.5 * p.dH(), vecN), ptx);
+				pn2 = Plane(ptx ,vecN);
+				//pn2.vis(3);
+			}
+		}
+
+
+		Point3d ptMid; ptMid.setToAverage(ptsX);
+		return ptMid;
+	}//End getIntersectingPlanes //endregion	
+
+	//region Function getExtremePlanes
+	// returns the extreme intersectin genbeams wiht its extreme faces/planes
+	// gbs: the intersecting genbeams
+	void getExtremePlanes(GenBeam& gbs[], Plane& pn1, Plane& pn2, Vector3d vecDir, Point3d ptAxis)
+	{ 
+		Line lnDir(ptAxis, vecDir);
+		Plane pnsA[0], pnsB[0];// collection of extreme planes in vecDir
+		Point3d ptsM[0];
+		for (int x=0;x<gbs.length();x++) 
+		{ 
+			GenBeam& g = gbs[x];
+			Plane pnA(g.ptCen(), g.vecD(vecDir));
+			Plane pnB=pnA;
+			Point3d ptm = getIntersectingPlanes(g, vecDir, ptAxis, pnA, pnB);
+		
+			ptsM.append(ptm);
+			pnsA.append(pnA);
+			pnsB.append(pnB);
+			
+			//pn1.vis(1);		pn2.vis(2);
+			
+		}//next x	
+
+
+	// order in dir
+		for (int i=0;i<gbs.length();i++) 
+			for (int j=0;j<gbs.length()-1;j++) 
+			{
+				Point3d pt1 =ptsM[j];// (pnsA[j].ptOrg() + pnsB[j].ptOrg()) * .5;
+				Point3d pt2 =ptsM[j+1];// (pnsB[j+1].ptOrg() + pnsB[j+1].ptOrg()) * .5;
+				double d1 = vecDir.dotProduct(pt1-_Pt0);
+				double d2 = vecDir.dotProduct(pt2-_Pt0);
+				
+				if (d1>d2)
+				{ 
+					gbs.swap(j, j + 1);
+					pnsA.swap(j, j + 1);
+					pnsB.swap(j, j + 1);
+					ptsM.swap(j, j + 1);
+				}
+			}
+
+		if (pnsA.length() > 0)pn1 = pnsA.first();
+		if (pnsB.length() > 0)pn2 = pnsB.last();
+
+		//pn1.vis(1);		pn2.vis(2);
+		return;
+	}//End getExtremePlanes //endregion			
+
+	//region Function transformPointToExtreme
+	// transforms the given point by the offset to the extreme vertex of the projected shape
+	// t: the tslInstance to 
+	double transformPointToExtreme(Point3d& pt, PLine shape, Plane pn, Vector3d vecDir)
+	{ 
+
+		shape.convertToLineApprox(dEps);
+		PlaneProfile pp(shape);
+		pp.project(pn, vecDir, dEps);
+		//pp.extentInDir(pp.coordSys().vecX()).vis(1);
+		//Display dp(1); dp.draw(pp, _kDrawFilled, 40);
+		
+		Point3d pts[] = pp.getGripVertexPoints();
+		pts = Line(_Pt0, vecDir).orderPoints(pts);
+		
+		double out;
+		if (pts.length()>0)
+		{
+			out = vecDir.dotProduct(pts.last() - pt);
+			pt += vecDir *out ;
+		}
+		
+		//pt.vis(4);
+		
+		return out;	
+	}//End transformPointToExtreme //endregion
+
+	//region Function getGenBeamsIntersect
+	// returns
+	// t: the tslInstance to 
+	GenBeam[] getGenBeamsIntersect(GenBeam gbs[], Point3d ptAxis, Vector3d vecDir, double radius, Body bodies[])
+	{ 
+		GenBeam out[0];
+		Line lnDir(ptAxis, vecDir);
+
+		Body bd(ptAxis - vecDir * U(10e4), ptAxis + vecDir * U(10e4), dEps );	//bd.vis(150);
+		GenBeam gbsX[] = bd.filterGenBeamsIntersect(gbs);
+
+	// append only envelope with cuts
+		for (int i=0;i<gbsX.length();i++) 
+		{ 
+			int n = gbs.find(gbsX[i]);
+			if (n>-1)
+			{ 
+				Body body = bodies[n];
+				if (body.intersectWith(bd))
+				{
+					out.append(gbsX[i]);
+					//bodies[n].ptCen().vis(1);
+				}
+			}
+			 
+		}//next i
+
+		
+		return out;
+	}//End getGenBeamsIntersect //endregion
+
+//endregion 
+
+//region Settings
+// settings prerequisites
+	String sDictionary = "hsbTSL";
+	String sPath = _kPathHsbCompany+"\\TSL";
+	String sFolder="Settings";
+	String sPathGeneral = _kPathHsbInstall+"\\Content\\General\\TSL\\"+sFolder+"\\";	
+	String sFileName ="DrillDIstribution";
+	Map mapSetting;
+
+// compose settings file location
+	String sFolders[]=getFoldersInFolder(sPath); 
+	int bPathFound = _bOnInsert ? sFolders.find(sFolder) >- 1 ? true : makeFolder(sPath + "\\" + sFolder) : false;
+	String sFullPath = sPath+"\\"+sFolder+"\\"+sFileName+".xml";
+
+// read a potential mapObject
+	MapObject mo(sDictionary ,sFileName);
+	if (mo.bIsValid())
+	{
+		mapSetting=mo.map();
+		setDependencyOnDictObject(mo);
+	}
+	// create a mapObject to make the settings persistent	
+	else if ((_bOnInsert || _bOnDebug) && !mo.bIsValid() )
+	{
+		String sFile=findFile(sFullPath); 
+	// if no settings file could be found in company try to find it in the installation path
+		if (sFile.length()<1) sFile=findFile(sPathGeneral+sFileName+".xml");	
+		if (sFile.length()>0)
+		{ 
+			mapSetting.readFromXmlFile(sFile);
+			mo.dbCreate(mapSetting);			
+		}
+	}
+	// validate version when creating a new instance
+	if(_bOnDbCreated)
+	{ 
+		int nVersion = mapSetting.getInt("GeneralMapObject\\Version");
+		String sFile = findFile(sPathGeneral + sFileName + ".xml");		// set default xml path
+		if (sFile.length()<1) sFile=findFile(sFullPath);				// set custom xml path if no default found
+		Map mapSettingInstall; mapSettingInstall.readFromXmlFile(sFile);	// read the xml from installation directory
+		int nVersionInstall = mapSettingInstall.getMap("GeneralMapObject").getInt("Version");		
+		if(sFile.length()>0 && nVersion!=nVersionInstall)
+			reportNotice(TN("|A different Version of the settings has been found for|") + scriptName()+
+			TN("|Current Version| ")+nVersion + "	" + _kPathDwg + TN("|Other Version| ") +nVersionInstall + "	" + sFile);
+	}
+	
+//region Read Settings
+
+	int nc = lightblue;
+	int nt = 90;
+	String sDisplayStyle = tDefaultEntry;
+
+	Map mapDisplay= mapSetting.getMap("Display");
+	if (mapDisplay.length()>0)
+	{
+		String k;
+		Map m = mapDisplay;
+		k = "Color"; if (m.hasInt(k))nc = m.getInt(k);
+		k = "Transparency"; if (m.hasInt(k))nt = m.getInt(k);
+
+		k = "Style"; 
+		if (m.hasString(k))
+		{
+			int n = sDisplayStyles.findNoCase(m.getString(k),-1);
+			if (n>-1)
+				sDisplayStyle = sDisplayStyles[n];
+		}		
+	}
+
+	String sTools[0];
+	Map mapTools= mapSetting.getMap("Tool[]");
+	
+	if (mapTools.length()>0)
+	{
+		String k;
+		for (int i=0;i<mapTools.length();i++) 
+		{ 
+			Map m = mapTools.getMap(i);
+			String name = m.getMapName();
+			if (name.length()>0 && sTools.findNoCase(name,-1)<0)
+				sTools.append(name); 
+		}//next i
+	
+	}
+	sTools = sTools.sorted();
+	sTools.insertAt(0, tDefaultEntry);
+//End Read Settings//endregion 
+	
+
+//End Settings//endregion
+
+//endregion //Part #1
+
+//region Part #2
+
+//region Properties
+
+//region Tool/Drill
+category = T("|Tool|");
+	PropString sTool(4, bIsDialog? T("|New Tool Definition|"):sTools, sToolName);	
+	sTool.setDescription(T("|Specifies a tool definition and overrules configured properties.|") + T("|Tool definitions can be specified by context menu.|"));
+	sTool.setCategory(category);
+	if (sTools.length()==1 && sTools.first()==tDefaultEntry && !bIsDialog)
+		sTool.setReadOnly(bDebug ? false: _kHidden);
+
+	String tRelativeDepth = T("|Relative Depth|"), tRelativeLocked = tRelativeDepth + ", " + T("|Sink Diameter Locked|");
+	String sSinkModes[] = {tDefaultEntry, tRelativeDepth, tRelativeLocked};
+	String sSinkModeName=T("|Mode|");	
+	PropString sSinkMode(5, sSinkModes, sSinkModeName);	
+	sSinkMode.setDescription(T("|Specifies the relation between sink/cone and depth of main drill.|") +
+		TN("|Relative depth means the depth will always keep the differnce specified.|") + 
+		TN("|If the diameter is locked the value can only be modified in the rule definition.|")+
+		TN("|If values of 'Export MapX Key' and 'Export MapX Value' are specified thesink tool will not be exported as tool but only shown visualized as solid subtraction.|"));
+	sSinkMode.setCategory(category);
+	if (sTool == tDefaultEntry)sSinkMode.set(tDefaultEntry);
+
+category = T("|Drill|");	
+	PropDouble dDiameter(0, U(12), sDiameterName,_kLength);	
+	dDiameter.setDescription(T("|Defines the Diameter|"));
+	dDiameter.setCategory(category);
+	dDiameter.setControlsOtherProperties(true);
+
+	PropDouble dDepth(1, U(0), sDepthName,_kLength);	
+	dDepth.setDescription(T("|Defines the depth|") + T("|0 = complete through|"));
+	dDepth.setCategory(category);
+
+//End Tool/Drill //endregion 
+
+//region Fastener
+category = T("|Fastener|");
+
+//region Definition
+	int bSimpleOnly = true;
+	Map mapDiamFilter = _Map.getMap("DiameterFilter");
+	int nDiameterFilter = mapDiamFilter.getInt("DiameterFilterIndex");//sDiameterFilters
+	String sDefinitions[]=GetDefinionsByDiameter(dDiameter,nDiameterFilter, bSimpleOnly);
+	AddDefinitionOptions(sDefinitions, nDiameterFilter);
+
+	String sDefinitionName=T("|Fastener Style|");	
+	PropString sDefinition(6, sDefinitions, sDefinitionName);
+	sDefinition.setDescription(T("|Defines the Style|"));
+	sDefinition.setCategory(category);
+	sDefinition.setControlsOtherProperties(true);
+
+	nDiameterFilter = sDiameterFilters.findNoCase(sDefinition ,- 1);
+	// filter option selected
+	if (nDiameterFilter>-1)
+	{ 
+		sDefinitions=GetDefinionsByDiameter(dDiameter,nDiameterFilter, bSimpleOnly);
+		AddDefinitionOptions(sDefinitions, nDiameterFilter);
+		sDefinition.setEnumValues(sDefinitions);	
+
+		String definition = GetLastDefinition(mapDiamFilter, sDefinitions);
+		if (sDefinitions.findNoCase(definition ,- 1) >- 1)
+			sDefinition.set(definition);
+		
+		// store selected filter option
+		mapDiamFilter.setInt("DiameterFilterIndex", nDiameterFilter);
+		_Map.setMap("DiameterFilter",mapDiamFilter);
+		setExecutionLoops(2);
+		return;
+	}	
+	else
+	{
+		// store last entry to keep it when filter option selected would accept it
+		mapDiamFilter.setString("lastEntry", sDefinition);
+		_Map.setMap("DiameterFilter",mapDiamFilter);
+	}//endregion 
+
+//region FastenerLength
+	double dThreadLengths[0], dFastenerLengths[0], dLengthList[] ={0}; // auto
+	if (sDefinition!=tAddNew && sDefinition!=tDisabled && sDiameterFilters.findNoCase(sDefinition,-1)<0)
+		dFastenerLengths.append(FastenerLengthList(sDefinition, dThreadLengths));
+	dLengthList.append(dFastenerLengths);
+
+	String sFastenerLengthName=T("|Length|");	
+	PropDouble dFastenerLength(16,dLengthList, sFastenerLengthName);	
+	dFastenerLength.setDescription(T("|Defines the Fastener Length, 0 = <automatic>|"));
+	dFastenerLength.setCategory(category);	
+	if (dFastenerLength!=0 && dFastenerLengths.find(dFastenerLength)<0)
+		dFastenerLength.set(0);	
+	
+	//endregion 
+
+//region Offsets
+	String sOffsetDescr = T("|Defines the offset of the fastener in relation to the axis location|");
+	String sOffsetXName=T("|Offset| X");	
+	PropDouble dOffsetX(13, U(0), sOffsetXName);	
+	dOffsetX.setDescription(sOffsetDescr);
+	dOffsetX.setCategory(category);
+	
+	String sOffsetYName=T("|Offset| Y");	
+	PropDouble dOffsetY(14, U(0), sOffsetYName);	
+	dOffsetY.setDescription(sOffsetDescr);
+	dOffsetY.setCategory(category);	
+
+	String sOffsetZName=T("|Offset| Z");	
+	PropDouble dOffsetZ(15, U(0), sOffsetZName);	
+	dOffsetZ.setDescription(sOffsetDescr);
+	dOffsetZ.setCategory(category);	//endregion 
+		
+//endregion 
+
+//region Sink/Conedrill
+category = T("|Sinkhole/ConeDrill|");
+	PropDouble dSinkDiameter(2, U(0), sSinkDiameterName,_kLength);	
+	dSinkDiameter.setDescription(T("|Defines the diameter of the sinkhole|"));
+	dSinkDiameter.setCategory(category);
+
+	PropDouble dSinkDepth(3, U(0), sSinkDepthName,_kLength);	
+	dSinkDepth.setDescription(T("|Defines the depth of the sinkhole|"));
+	dSinkDepth.setCategory(category);	
+	
+	PropDouble dAngle(7, U(0), sAngleName,_kAngle);	
+	dAngle.setDescription(T("|Defines the angle to perform the sinkhole as cone|"));
+	dAngle.setCategory(category);	
+	if (abs(dAngle) >= 180)
+	{
+		int n = abs(dAngle) / 180;
+		dAngle.set(abs(dAngle) - n*180);
+	}
+	
+String sOppositeSide = T(" |Opposite Side|");
+category = category+sOppositeSide;
+	
+	String sSinkDiameter2Name = sSinkDiameterName + sOppositeSide;
+	String sSinkDepth2Name = sSinkDepthName + sOppositeSide;
+	String sAngle2Name = sAngleName + sOppositeSide;
+	PropDouble dSinkDiameter2(10, U(0), sSinkDiameter2Name,_kLength);	
+	dSinkDiameter2.setDescription(T("|Defines the diameter of the sinkhole on the opposite side|"));
+	dSinkDiameter2.setCategory(category);
+
+	PropDouble dSinkDepth2(11, U(0), sSinkDepth2Name,_kLength);	
+	dSinkDepth2.setDescription(T("|Defines the depth of the sinkhole on the opposite side|"));
+	dSinkDepth2.setCategory(category);	
+	
+	PropDouble dAngle2(12, U(0), sAngle2Name,_kAngle);	
+	dAngle2.setDescription(T("|Defines the angle to perform the sinkhole as cone on the opposite side|"));
+	dAngle2.setCategory(category);	
+	if (abs(dAngle2) >= 180)
+	{
+		int n = abs(dAngle2) / 180;
+		dAngle2.set(abs(dAngle2) - n*180);
+	}	
+//End Sink/Conedrill //endregion 
+
+//region Distribution
+
+category = T("|Distribution|");
+	String sInterdistance=T("|Interdistance|") ;	
+	PropDouble dInterdistance (4, U(1000), sInterdistance,_kLength);
+	dInterdistance.setCategory(category);
+	dInterdistance.setDescription(T("|Defines the interdistance or the quantity of connectors|"));
+
+
+	String sDistributionModeName=T("|Mode|");	
+	String sDistributionModes[] ={ tFixed, tEven, tVertex,tCircle};//tFreeDrill
+	PropString sDistributionMode(0, sDistributionModes, sDistributionModeName);	
+	sDistributionMode.setDescription(T("|Defines the DistributionMode|"));
+	sDistributionMode.setCategory(category);
+
+
+	String sNumRowName=T("|Rows|");	
+	PropInt nNumRow(0, 1, sNumRowName);	
+	nNumRow.setDescription(T("|Defines the number of rows|"));
+	nNumRow.setCategory(category);
+
+	String sRowOffsetListName=T("|Row Offsets|");	
+	PropString sRowOffsetList(1, "", sRowOffsetListName);	
+	sRowOffsetList.setDescription(T("|Specify offset, separate multiple by a semicolon, i.e. '200;150;200'|"));
+	sRowOffsetList.setCategory(category);
+
+	String sColumnOffsetListName=T("|Column Offsets|");	
+	PropString sColumnOffsetList(2, "", sColumnOffsetListName);	
+	sColumnOffsetList.setDescription(T("|Specify offset, separate multiple by a semicolon, i.e. '200;150;200'|"));
+	sColumnOffsetList.setCategory(category);
+	if (sDistributionMode==tVertex)
+	{ 
+		sColumnOffsetList.set("");
+		sColumnOffsetList.setReadOnly(true);
+	}
+	
+	String sQuantityName=T("|Quantity|");	
+	PropInt nQuantity(1, 0, sQuantityName);	
+	nQuantity.setDescription(T("|Shows the quantity of the calculated drills|"));
+	nQuantity.setCategory(category);
+	nQuantity.setReadOnly(_bOnInsert?_kHidden:_kReadOnly);
+		
+//End Distribution//endregion 
+
+//region Alignment / Slotted
+category = T("|Alignment|");
+	String sFaceName=T("|Face|");
+	String sFaces[] ={ kReferenceFace, kTopFace };
+	PropString sFace(3, sFaces, sFaceName);	
+	sFace.setDescription(T("|Defines the Face|"));
+	sFace.setCategory(category);
+	int nFace = sFace == kReferenceFace ?- 1 : 1;
+
+	String sBevelName=T("|Bevel|");	
+	PropDouble dBevel(5 ,U(0), sBevelName);	
+	dBevel.setDescription(T("|Defines the angle of the drill axis in relation to the selected face.|") +"-90° <"+ sBevelName+" < 90°");
+	dBevel.setCategory(category);
+	
+	if (abs(dBevel)>90)
+	{ 
+		double d = dBevel;
+		int sgn = dBevel / abs(dBevel);
+		while (abs(d) >= 90)d -=sgn* 90;
+		dBevel.set(d);
+	}
+
+
+	String sRotationName=T("|Rotation|");	
+	PropDouble dRotation(6, U(0), sRotationName);	
+	dRotation.setDescription(T("|Defines the rotation of the drill axis perpendicular to the segment on the selected face.| ")+"-90° <"+ sRotationName+" < 90°");
+	dRotation.setCategory(category);	
+
+category = T("|Slotted Hole|");
+	String sSlotLengthName=T("|Slot Length|");	
+	PropDouble dSlotLength(8, U(0), sSlotLengthName);	
+	dSlotLength.setDescription(T("|Defines the length of a slotted hole.|") + T("|0 = byDiameter|"));
+	dSlotLength.setCategory(category);
+	
+	String sSlotWidthName=T("|Slot Width|");	
+	PropDouble dSlotWidth(9, U(0), sSlotWidthName);	
+	dSlotWidth.setDescription(T("|Defines the width of a slotted hole.|") + T("|0 = byDiameter|"));
+	dSlotWidth.setCategory(category);
+
+	String sToolIndexName=T("|Tool Index|");	
+	PropInt nToolIndex(2, 1, sToolIndexName);	
+	nToolIndex.setDescription(T("|Defines the Tool Index of the freeprofile tool|"));
+	nToolIndex.setCategory(category);
+		
+//End Alignment / Slotted //endregion 	
+
+//region Function setReadOnlyFlagOfProperties
+	// sets the readOnlyFlag
+	void setReadOnlyFlagOfProperties()
+	{ 		
+
+		if (bIsDialog) //#DI
+		{ 
+		// hide some properties and set to 0
+			
+			dInterdistance.set(0);
+			sDistributionMode.set("");
+			nNumRow.set(0);
+			sRowOffsetList.set("");
+			sColumnOffsetList.set("");
+			sFace.set("");
+			dBevel.set(0);
+			dRotation.set(0);
+			
+			dInterdistance.setReadOnly(_kHidden);
+			sDistributionMode.setReadOnly(_kHidden);
+			nNumRow.setReadOnly(_kHidden);
+			sRowOffsetList.setReadOnly(_kHidden);
+			sColumnOffsetList.setReadOnly(_kHidden);
+			sFace.setReadOnly(_kHidden);
+			dBevel.setReadOnly(_kHidden);
+			dRotation.setReadOnly(_kHidden);	
+			dSlotLength.setReadOnly(_kHidden);
+			dSlotWidth.setReadOnly(_kHidden);
+	
+		// the values of these additional properties are only shown during settings dialog, beware indices when adding properties to main
+			if (nDialogMode == 1)
+			{ 
+			category = T("|Tool|");
+				String sMapNameName=T("|Export MapX Key|");	
+				PropString sMapName(6, "", sMapNameName);	
+				sMapName.setDescription(T("|Defines the name of an tool based mapX entry.|") + 
+					T(" |This name needs to be set in conjunction with the export mapX value to resolve the tool description in an exporter definition.|"));
+				sMapName.setCategory(category);
+				
+				String sEntryName=T("|Export MapX Value|");	
+				PropString sEntry(7, "", sEntryName);	
+				sEntry.setDescription(T("|Defines the name of the entry.|")+
+					T(" |This name needs to be set in conjunction with the export mapX value to resolve the tool description in an exporter definition.|"));
+				sEntry.setCategory(category);			
+	
+			category = T("|Display|");
+				String sColorName=T("|Color|");	
+				PropInt nColor(1, 160, sColorName);	
+				nColor.setDescription(T("|Defines the index color of the tool.|") + T(", |0 = byBlock|"));
+				nColor.setCategory(category);
+				
+				String sTransparencyName=T("|Transparency|");	
+				PropInt nTransparency(2, 50, sTransparencyName);	
+				nTransparency.setDescription(T("|Defines the Transparency of the tool in the range of 0...100|"));
+				nTransparency.setCategory(category);
+				
+				
+				String sStyleName=T("|Style|");	
+				PropString sStyle(8, sDisplayStyles, sStyleName);	
+				sStyle.setDescription(T("|Defines which graphics will be drawn|"));
+				sStyle.setCategory(category);
+	
+	
+			}
+			return;
+		}
+		else
+		{
+			int bDisabled = sDefinition == tDisabled || sDiameterFilters.find(sDefinition,-1)>-1;
+			sSinkMode.setReadOnly(bDebug?false:_kHidden);
+			dOffsetX.setReadOnly(bDisabled?_kHidden:false);
+			dOffsetY.setReadOnly(bDisabled?_kHidden:false);
+			dOffsetZ.setReadOnly(bDisabled?_kHidden:false);
+			dFastenerLength.setReadOnly(bDisabled?_kHidden:false);
+		}
+		return;
+	}//endregion
+
+//region Get Property map from setting // #TE
+	int bIsLocked,bIsRelative, bDoSinkSolidSubtract; 
+	double dRelativeDepthMain2Sink;
+	String sMapXKey, sMapXValue, sMapXName = "ToolData";
+	if (sTool!=tDefaultEntry)
+	{ 
+		String k;
+		Map mapTool = _Map.getMap("ToolDef");
+		for (int i=0;i<mapTools.length();i++) 
+		{ 
+			Map m = mapTools.getMap(i);
+			String name = m.getMapName();
+			if (name==sTool)
+			{
+				mapTool=m;
+				_Map.setMap("ToolDef", mapTool);
+				
+				break;
+			}
+		}//next i
+		
+	//region Display override
+		if (mapTool.hasMap("Display"))
+		{ 
+			Map m = mapTool.getMap("Display");
+			k = "Color"; 			if (m.hasInt(k))nc = m.getInt(k);
+			k = "Transparency"; 	if (m.hasInt(k))nt = m.getInt(k);
+	
+			k = "Style"; 
+			if (m.hasString(k))
+			{
+				int n = sDisplayStyles.findNoCase(m.getString(k),-1);
+				if (n>-1)
+					sDisplayStyle = sDisplayStyles[n];
+			}			
+		}
+	//endregion 	
+
+	// Current properties
+		Map mapProps = _ThisInst.mapWithPropValues();
+		
+	// Override properties which are not controlled by settings
+		Map propStrings = mapTool.getMap("Properties\\PropString[]");
+		Map propNewStrings;
+		String sValues[] = { sDistributionMode, sRowOffsetList, sColumnOffsetList, sFace};//, "", sSinkMode
+		for (int i=0;i<propStrings.length();i++) 
+		{ 
+			Map m = propStrings.getMap(i);
+			int index = m.hasInt("nIndex")?m.getInt("nIndex"):-1;
+			
+		// ignore mapX entry and value as properties, but collect values	
+			if (index==6)
+			{ 
+				sMapXKey = m.getString("strValue");
+				continue;
+			}
+			else if (index==7)
+			{ 
+				sMapXValue = m.getString("strValue");
+				continue;
+			}
+			else if (index==8)
+			{ 
+				sDisplayStyle = m.getString("strValue");
+				continue;
+			}			
+			else if (index>-1 && index<sValues.length())
+			{
+				m.setString("strValue",sValues[index]); 
+			}
+			propNewStrings.appendMap("PropString", m);
+		}
+		mapProps.setMap("PropString[]", propNewStrings);
+
+	// Get mode		
+		bIsRelative = sSinkMode == tRelativeDepth;
+		bIsLocked = sSinkMode == tRelativeLocked;
+	
+	// doubles
+		Map propDoubles = mapTool.getMap("Properties\\PropDouble[]");
+		double diameter = dDiameter;		
+		double depth = dDepth;
+		
+		double sinkDiameter = dSinkDiameter;
+		double sinkDepth = dSinkDepth;
+		double coneAngle = dAngle;
+
+		double sinkDiameter2 = dSinkDiameter2;
+		double sinkDepth2 = dSinkDepth2;
+		double coneAngle2 = dAngle2;
+
+		double slotLength = dSlotLength;
+		double slotWidth = dSlotWidth;
+
+		for (int i = 0; i < propDoubles.length(); i++)
+		{
+			Map m = propDoubles.getMap(i);
+			int index = m.hasInt("nIndex") ? m.getInt("nIndex") :- 1;
+			double value = m.getDouble("dValue");
+			
+			if (index == 0) diameter=value;
+			else if (index == 1) depth=value;
+			else if (index == 2) sinkDiameter=value;
+			else if (index == 3) sinkDepth=value;
+			
+			else if (index == 7) coneAngle=value;
+			else if (index == 8) slotLength=value;
+			else if (index == 9) slotWidth=value;
+
+			else if (index == 10) sinkDiameter2=value;
+			else if (index == 11) sinkDepth2=value;	
+			else if (index == 12) coneAngle2=value;
+
+		}
+		
+	// ints	
+		Map propInts = mapTool.getMap("Properties\\PropInt[]");
+
+		for (int i = 0; i < propInts.length(); i++)
+		{
+			Map m = propInts.getMap(i);
+			int index = m.hasInt("nIndex") ? m.getInt("nIndex") :- 1;
+			int value = m.getInt("lValue");	
+			
+			if (index == 1)nc = value;
+			else if (index == 2)nt = value;	
+		}
+		
+		_ThisInst.setPropValuesFromMap(mapProps);
+		
+	//region Locked: main and sink diameter are locked, depth of sink is realtive to given offset
+		
+		if (bIsLocked || bIsRelative)
+		{ 
+			dDiameter.set(diameter);
+			dDiameter.setReadOnly(bDebug ? false : _kReadOnly);
+			
+			dRelativeDepthMain2Sink = depth - sinkDepth-sinkDepth2;
+			dSinkDepth.setReadOnly(bDebug ? false : _kReadOnly);
+			dSinkDepth2.setReadOnly(bDebug ? false : _kReadOnly);
+			
+			if(bIsLocked)
+			{ 
+				dSinkDiameter.set(sinkDiameter);
+				dSinkDiameter.setReadOnly(bDebug ? false : _kReadOnly);	
+				dSinkDiameter2.set(sinkDiameter2);
+				dSinkDiameter2.setReadOnly(bDebug ? false : _kReadOnly);					
+			}
+
+			dAngle.set(coneAngle);
+			dAngle.setReadOnly(bDebug ? false : _kReadOnly);
+			dAngle2.set(coneAngle);
+			dAngle2.setReadOnly(bDebug ? false : _kReadOnly);			
+			
+			
+			
+			dSlotLength.set(0);
+			dSlotLength.setReadOnly(bDebug ? false : _kHidden);
+			
+			dSlotWidth.set(0);
+			dSlotWidth.setReadOnly(bDebug ? false : _kHidden);
+			
+			if (sMapXKey.length()>0 && sMapXValue.length()>0)
+				bDoSinkSolidSubtract = true;
+			
+			
+		}		
+	//endregion 	
+
+		
+
+	}
+//endregion	
+
+//End Properties//endregion 
+
+//region References
+	GenBeam genbeams[0],gbRef;
+	//GenBeam gbFemales[0];
+	Point3d ptFace;
+	Plane pnFace;
+	Vector3d vecX, vecY,vecZ,vecFace;
+	double dH;
+	PLine plines[0];
+	EntPLine epls[0];
+	EntCircle circles[0];
+	PlaneProfile ppRange;
+	String sStereotype = "Bohrung9_50";//"hsbCLT-Drill-Distribution";
+	int bIsSingleLocation;
+	
+	int bDrawAll = sDisplayStyle.find(tDefaultEntry,0,false)>-1?true:false;
+	int bDrawPath = bDrawAll || sDisplayStyle.find(tPathOnly,0,false)>-1?true:false;
+	int bDrawContour = bDrawAll || sDisplayStyle.find(tContourOnly,0,false)>-1?true:false;
+	int bDrawAxis = bDrawAll || sDisplayStyle.find(tAxisOnly,0,false)>-1?true:false;
+
+	
+	double tan1 = tan(.5 * dAngle);
+	double tan2 = tan(.5 * dAngle2);
+	
+	
+
+
+	Entity entObstacles[] = _Map.getEntityArray("Obstacle[]", "", "Obstacle");
+//endregion
+
+//region Grip Managament #GM1
+	String kGripVertex = "Vertex",kGripDepthVertex = "DepthVertex";
+	addRecalcTrigger(_kGripPointDrag, "_Grip");	
+
+	Grip grip;
+	int indexOfMovedGrip = Grip().indexOfMovedGrip(_Grip);
+	int bJig,bDrag, bOnDragEnd;
+	Vector3d vecOffsetApplied;
+	if (indexOfMovedGrip>-1)
+	{ 
+		bDrag = _bOnGripPointDrag && _kExecuteKey=="_Grip";
+		bOnDragEnd = !_bOnGripPointDrag;		
+		grip = _Grip[indexOfMovedGrip];
+		vecOffsetApplied = grip.vecOffsetApplied();
+		bJig = true;
+	}	
+	if (bOnDragEnd)setExecutionLoops(2);
+
+
+//region Get potential grip vertices	
+	int nVertexIndices[0], bHasGripVertices;
+	int nVertexDepthIndices[0], bHasGripDepthVertices;
+	{ 
+		int pref = kGripVertex.length();
+		int nums[0], nums2[0];
+		for (int i=0;i<_Grip.length();i++)
+		{ 
+			Grip& g = _Grip[i];
+			String name = g.name();
+			if (name.find(kGripVertex, 0,false)>-1)
+			{
+				nVertexIndices.append(i);
+				int num = (name.right(name.length() - pref)).atoi();
+				nums.append(num);			
+			}
+//			else if (name.find(kGripDepthVertex, 0,false)>-1)
+//			{
+//				nVertexDepthIndices.append(i);
+//				int num = (name.right(name.length() - kGripDepthVertex.length())).atoi();
+//				nums2.append(num);			
+//			}			
+		}
+	// order vertex indices ascending
+		for (int i=0;i<nVertexIndices.length();i++) 
+			for (int j=0;j<nVertexIndices.length()-1;j++) 
+				if (nums[j]>nums[j+1])
+				{
+					nums.swap(j, j + 1);
+					nVertexIndices.swap(j, j + 1);	
+				}
+//		for (int i=0;i<nVertexDepthIndices.length();i++) 
+//			for (int j=0;j<nVertexDepthIndices.length()-1;j++) 
+//				if (nums2[j]>nums2[j+1])
+//				{
+//					nums2.swap(j, j + 1);
+//					nVertexDepthIndices.swap(j, j + 1);	
+//				}				
+		bHasGripVertices=nVertexIndices.length()>0;	
+		//bHasGripDepthVertices=nVertexDepthIndices.length()>0;	
+	}
+	
+// Convert _PtG into _Grips
+	if (_PtG.length()>0 && !bHasGripVertices)
+	{ 
+		for (int i=0;i<_PtG.length();i++) 
+		{ 
+			Grip g;
+			g.setPtLoc(_PtG[i]);
+			g.setVecX(vecX);
+			g.setVecY(vecY);
+			g.setColor(150);
+			g.setShapeType(_kGSTCircle);
+			g.setName(kGripVertex+i);
+			g.setToolTip(T("|Move to modify the path of the tool definition|"));
+			g.addHideDirection(vecX);
+			g.addHideDirection(-vecX);
+			g.addHideDirection(vecY);
+			g.addHideDirection(-vecY);	
+			nVertexIndices.append(i);
+			_Grip.append(g);
+			bHasGripVertices = true;
+		}//next i	
+		
+	}
+	if (bHasGripVertices && _PtG.length()>0)
+		_PtG.setLength(0);
+	//endregion 
+
+
+//endregion 
+
+//region JIG
+	Point3d ptJig;
+	String kJigGripDistribute = "JigGripDistribute", kJigSelectFace = "SelectFace", kJigFreeDrill = "FreeDrill";
+	if (_bOnJig && _kExecuteKey== kJigGripDistribute) 
+	{
+		bJig = true;	
+		ptJig = _Map.getPoint3d("_PtJig"); // running point
+	    ptFace = _Map.getPoint3d("ptFace");
+	    vecX = _Map.getVector3d("vecX");
+	    vecY = _Map.getVector3d("vecY");
+	    vecZ = _Map.getVector3d("vecZ");
+	    vecFace = _Map.getVector3d("vecFace");
+	    Point3d pts[] = _Map.getPoint3dArray("pts");    
+	    setPropValuesFromMap(_Map.getMap("PropertyMap"));	    
+	    ppRange=_Map.getPlaneProfile("range");
+		int isSingleLocation = _Map.getInt("isSingleLocation");
+		int isThrough = dDepth <= 0;
+		int hasCone = dAngle > dEps;
+		int hasCone2 = dAngle2 > dEps;
+		
+		double dH = _Map.getDouble("dH");
+
+	    Display dp(0),dpText(0), dpRange(0);
+	    dp.trueColor(darkyellow);
+	    
+	    pnFace=Plane(ptFace, vecFace);
+	    
+		if (!isSingleLocation)
+		{
+			Line(ptJig, vecZView).hasIntersection(pnFace, ptJig);	
+			pts.append(ptJig);
+			
+		}    
+	    pts = pnFace.projectPoints(pts);
+
+	//region // draw single free drill
+    	if (isSingleLocation)
+    	{ 
+    		double radius = .5 * dDiameter;
+    		Point3d ptStart = pts.first();    		
+    		Point3d pt1 = ptStart;
+
+    		Vector3d vecZT = ptJig - pt1; 
+    		if (vecZT.isPerpendicularTo(vecFace))
+    		{ 
+    			Plane pnOpp=Plane(pt1-vecFace*(dDepth<=0?dH:dDepth), vecFace);
+    			if (Line(ptJig, vecFace).hasIntersection(pnOpp, ptJig))
+    				vecZT = ptJig - pt1; 
+    		}
+
+    		PLine pl (ptStart, ptJig);
+    		dp.draw(pl);
+    		
+    		vecZT.normalize();
+    		if (vecZT.dotProduct(vecFace)>0)
+    			vecZT *= -1;
+			pt1-=vecZT * U(10e5);	    		
+
+		// preview bevel and rotation
+			double rotation, bevel = setBevelRotation(vecZT, vecFace, vecX, vecZ, rotation);
+			if (abs(bevel)>0 && abs(bevel)<90)
+			{ 
+				String text, s; 
+				s.formatUnit(bevel, 2, 1);
+				text += s+"°";
+				s.formatUnit(rotation, 2, 1);
+				text += "/"+s+"°";
+				dp.draw(text, ptStart, vecX, vecY, 0, 0, _kDeviceX);
+			}			
+		// invalid bevel
+			if (abs(bevel)<dEps)
+			{ 
+				dp.trueColor(red);
+				dp.draw("X", ptStart, vecX, vecY, 0, 0, _kDeviceX);
+				return;
+			}
+
+
+			Point3d pt2 = ptStart + vecZT * (isThrough?U(10e5):dDepth);   		   		
+	    	Body bd(pt1, pt2, radius);
+	    	
+	    // Sink Cone Side 1	
+	    	if (hasCone)
+	    	{ 
+	    		double coneDepth = radius * (tan(90 - .5 * dAngle));
+				double coneRadius = coneDepth / (tan(90 - .5 * dAngle))+radius;
+	    		ConeDrill cone(ptStart+vecZT*dSinkDepth, vecZT, coneRadius, dAngle*.5);
+				bd.addPart(cone.cuttingBody());
+	    	}
+	    	else if (dSinkDiameter>0 && dSinkDepth>0)
+	    	{ 
+	    		bd.addPart(Body(pt1, ptStart + vecZT * dSinkDepth , dSinkDiameter * .5));
+	    	}
+
+	    // Sink Cone Side 2	
+//	    	if (hasCone2)
+//	    	{ 
+//	    		double coneDepth = radius * (tan(90 - .5 * dAngle2));
+//				double coneRadius = coneDepth2 / (tan(90 - .5 * dAngle2))+radius;
+//	    		ConeDrill cone(ptStart+vecZT*dSinkDepth2, vecZT, coneRadius, dAngle2*.5);
+//				bd.addPart(cone.cuttingBody());
+//	    	}
+//	    	else if (dSinkDiameter>0 && dSinkDepth>0)
+//	    	{ 
+//	    		bd.addPart(Body(pt1, ptStart + vecZT * dSinkDepth , dSinkDiameter * .5));
+//	    	}
+
+
+
+	    	Cut ctFace(pts.first(), vecFace);
+			bd.addTool(ctFace, 0);
+
+			if (isThrough)
+				bd.addTool(Cut(pts.first()-vecFace*dH, -vecFace), 0);
+
+			dp.draw(bd); 
+
+
+			return;
+    	}
+
+    			
+	//endregion 
+
+    
+    
+    
+	    PLine pl(vecFace);
+	    for (int i=0;i<pts.length();i++) 
+	    { 
+	    	pl.addVertex(pts[i]); 
+	    	 
+	    }//next i
+////	    if (pts.length()>1)
+////	    	pl.close();
+//	
+//		dpRange.draw(ppRange, _kDrawFilled);
+	    
+	    if (pts.length()<1)// do not attempt to draw invalid plines
+	    {
+	    	return;
+	    }
+	    else if (pl.length()<dEps)
+	    {
+	    	pl.addVertex(pts.first() + vecX * dEps);
+	    }
+	    else
+		{
+			dp.draw(pl);
+		}
+	    plines.append(pl);
+    
+	    if (0)
+	    { 
+	    	Display dpc(2);
+	    	PLine pl;
+	    	pl.createCircle(ptFace, vecFace, U(80));
+	    	dpc.draw(pl);
+	    	pl.createCircle(ptJig, vecFace, U(80));
+	    	dpc.draw(pl);
+	    	dpc.draw(PLine(ptJig, ptFace));
+	    	
+	    }
+
+	
+	    //if (pl.length()<dEps)return;   // jig is part of main code
+	}	
+	else if (_bOnJig && _kExecuteKey== kJigSelectFace)
+	{ 
+		Point3d ptJig = _Map.getPoint3d("_PtJig"); //running point
+		int bFront = ! _Map.hasInt("showFront") ? true : _Map.getInt("showFront");
+		Map mapFaces = _Map.getMap("Face[]");
+		PlaneProfile pps[0];
+		
+		double dDist = U(10e5);
+		int index = - 1;
+		for (int i = 0; i < mapFaces.length(); i++)
+		{
+			PlaneProfile pp = mapFaces.getPlaneProfile(i);
+			CoordSys cs = pp.coordSys();
+			Vector3d vecZ = cs.vecZ();
+			Point3d ptOrg = cs.ptOrg();
+			
+//			Display dpx(i);
+//			dpx.draw(PLine(pp.ptMid(), pp.ptMid() + vecZ * U(200)));
+
+			double dFront = vecZ.dotProduct(vecZView);
+			if ((dFront > 0 && bFront) || (dFront < 0 && !bFront))
+			{
+				Point3d pt = ptJig;
+				Line(ptJig, vecZView).hasIntersection(Plane(ptOrg, vecZ), pt);//
+				if (pp.pointInProfile(pt)==_kPointInProfile)
+					index = pps.length();
+				pps.append(pp);
+			}
+		}
+		
+		Display dp(-1);
+		if (index < 0 && pps.length() > 0)index = 0;
+		for (int i = 0; i < pps.length(); i++)
+		{
+			PlaneProfile pp = pps[i];
+			
+			if (in3dGraphicsMode())
+			{ 
+				pp.transformBy(pp.coordSys().vecZ() *10*dEps);
+				dp.trueColor(i == index?darkyellow3D:lightblue);				
+			}
+			else
+			{ 
+				dp.trueColor(i == index?darkyellow:lightblue,75);				
+			}
+			dp.draw(pp, _kDrawFilled);
+
+//			PLine rings[] = pp.allRings(true, false);
+//			for (int r=0;r<rings.length();r++) 
+//			{ 
+//				Body bd(rings[r], pp.coordSys().vecZ()*U(20),1);
+//				dp.draw(bd);
+//				 
+//			}//next r
+			
+			
+			
+			
+			
+		}//next i
+
+		return;		
+	}
+
+//End bOnJig//endregion 
+
+//region bOnInsert
+	int nDistributionMode = sDistributionModes.find(sDistributionMode);
+	if (nDistributionMode<-1){ sDistributionMode.set(sDistributionModes[0]); setExecutionLoops(2); return;}	
+	
+	if(_bOnInsert)
+	{
+	//region Dialog
+		if (insertCycleCount()>1) { eraseInstance(); return; }
+					
+	// silent/dialog
+		if (_kExecuteKey.length()>0)
+		{
+			String sEntries[] = TslInst().getListOfCatalogNames(scriptName());	
+			if (sEntries.findNoCase(_kExecuteKey,-1)>-1)
+				setPropValuesFromCatalog(_kExecuteKey);
+			else
+				setPropValuesFromCatalog(tLastInserted);					
+		}	
+	// standard dialog	
+		else	
+		{
+			setPropValuesFromCatalog(tLastInserted);
+			setReadOnlyFlagOfProperties();
+			
+			Map mapDiamFilter;
+			while (showDialog("---") == _kUpdate) // _kUpdate means a controlling property changed.	
+			{ 
+				setReadOnlyFlagOfProperties(); // need to set hidden state
+
+				// filter option selected
+				nDiameterFilter = sDiameterFilters.findNoCase(sDefinition ,- 1);
+				if (nDiameterFilter>-1)
+				{ 
+					sDefinitions=GetDefinionsByDiameter(dDiameter,nDiameterFilter, bSimpleOnly);
+					AddDefinitionOptions(sDefinitions, nDiameterFilter);	
+					sDefinition.setEnumValues(sDefinitions);
+
+					String definition = GetLastDefinition(mapDiamFilter, sDefinitions);
+					if (sDefinitions.findNoCase(definition ,- 1) >- 1)
+						sDefinition.set(definition);
+				}	
+				else
+					mapDiamFilter.setString("lastEntry", sDefinition);	
+					
+					
+			// Set lengths based on selected definition
+				if (sDefinition!=tAddNew && sDefinition!=tDisabled && sDiameterFilters.findNoCase(sDefinition,-1)<0)
+				{
+					dFastenerLengths.setLength(0);
+					dThreadLengths.setLength(0);
+					dFastenerLengths.append(FastenerLengthList(sDefinition, dThreadLengths));
+					
+					dFastenerLengths.insertAt(0, 0);
+					dFastenerLength.setEnumValues(dFastenerLengths);
+					
+				}
+		
+					
+			}
+			_Map.setMap("DiameterFilter",mapDiamFilter);
+		}
+
+		setReadOnlyFlagOfProperties();
+		
+		
+		nDistributionMode = sDistributionModes.find(sDistributionMode);
+		int bIsCircleMode = sDistributionMode == tCircle;
+		bIsSingleLocation = dInterdistance <= dEps;
+		
+		nFace = sFace == kReferenceFace ?- 1 : 1;
+		double dRadius = dDiameter*.5;
+	
+	// Get cone diameter and depth for jigging
+		double dConeRadius = dDiameter*.5;
+		double dConeDepth;
+		if (abs(dAngle)>0)
+		{ 
+			CoordSys csRot;
+			csRot.setToRotation(dAngle, _XW, _PtW);
+			Line ln(_PtW, _ZW);
+			ln.transformBy(csRot);
+			Plane pn(_PtW,_YW);
+			Point3d ptx = ln.intersect(pn, dRadius);
+			dRadius += abs(_YW.dotProduct(_PtW - ptx));
+			dConeDepth = _ZW.dotProduct(_PtW-ptx);
+		}			
+	//endregion 	
+		
+	//region Collect main genbeams
+		Entity ents[0];
+		String prompt = T("|Select genbeams and (optional) defining polylines|");
+		if (bIsCircleMode)
+			prompt = T("|Select genbeams and defining circles|");
+		PrEntity ssE(prompt, GenBeam());
+		if (bIsCircleMode)
+			ssE.addAllowedClass(EntCircle());			
+		else
+			ssE.addAllowedClass(EntPLine());
+		if (ssE.go())
+			ents.append(ssE.set());
+		
+	// collect genbeams	
+		for (int i=0;i<ents.length();i++) 
+		{ 
+			GenBeam gb = (GenBeam)ents[i]; 
+			EntPLine epl= (EntPLine)ents[i];
+			EntCircle circ= (EntCircle)ents[i];
+
+			if (gb.bIsValid())
+			{ 
+				Vector3d vecXi = gb.vecX();
+				Vector3d vecYi = gb.vecZ();				
+				Vector3d vecZi = gb.vecZ();
+				if (!gbRef.bIsValid())
+				{
+					gbRef = gb;
+					vecX = gbRef.vecX();
+					vecY = gbRef.vecY();
+					vecZ = gbRef.vecZ();				
+					dH = gbRef.dH();
+
+					ptFace = gbRef.ptCen() + .5 * vecFace * dH;
+					genbeams.append(gb);
+				}
+				genbeams.append(gb);
+
+			}
+			else if (epl.bIsValid())
+			{ 	
+				epls.append(epl);
+			}
+			else if (circ.bIsValid())
+			{ 
+				circles.append(circ);
+				_Entity.append(circ);
+			}			
+		}//next i
+		
+		
+		if (bIsCircleMode && circles.length()<1)
+		{ 
+			PrEntity ssE(T("|Select defining circles|"), EntCircle());
+			if (ssE.go())
+			{
+				ents=ssE.set();
+				for (int i=0;i<ents.length();i++) 
+				{ 
+					EntCircle circ= (EntCircle)ents[i];
+					if (circ.bIsValid())
+					{ 
+						circles.append(circ);
+						_Entity.append(circ);
+					}					
+				}
+			}
+		}
+		
+		if (bIsCircleMode && circles.length()<1)
+		{ 
+			reportNotice("\n" + T("|Invalid selection set, please select circles describing the tool|"));
+			eraseInstance();
+			return;
+		}
+		
+		
+		
+	//region Remove polylines which match the envelope of a sheet or panel // HSB-17403
+		for (int i=epls.length()-1; i>=0 ; i--) 
+		{ 
+			PLine pl=epls[i].getPLine();		
+			if (!pl.isClosed()){ continue;}
+			double area = pl.area();
+			PlaneProfile pp(pl);
+			int bRemove;
+			for (int j=0;j<genbeams.length();j++) 
+			{ 
+				GenBeam& g= genbeams[j];
+				if (g.bIsKindOf(Beam())){ continue;}
+				
+				Sheet sh = (Sheet)g;
+				Sip panel = (Sip)g;
+				PLine plEnvelope = sh.bIsValid() ? sh.plEnvelope() :(panel.bIsValid()?panel.plEnvelope():PLine());
+				
+				if (abs(area-plEnvelope.area())>pow(dEps,2)){ continue;}
+				
+				PlaneProfile pp2(plEnvelope);
+				pp.intersectWith(pp2);
+				double area2 = pp.area();
+				
+				if (abs(area-area2)<pow(dEps,2))
+				{ 
+					bRemove = true;
+					reportMessage(TN("|selecton set refuses the defining polyline of| ") + (sh.bIsValid()?T("|Sheet|"):T("|Panel|")) +" " +g.posnum() + " " + g.handle());					
+					break;
+				}
+				 
+			}//next j
+			
+			if (bRemove)
+				epls.removeAt(i);
+
+			
+		}//next i
+		for (int i=0;i<epls.length();i++) 
+			_Entity.append(epls[i]); 
+
+		//reportMessage("\nepls" + epls.length());
+	//endregion 	
+	
+		if (genbeams.length()<1)
+		{ 
+			reportMessage("\n"+ scriptName() + T("|This tool requires at least one genbeam| ")+T("|Tool will be deleted.|"));
+			eraseInstance();
+			return;
+		}	
+		int bRefIsBeam = gbRef.bIsKindOf(Beam());
+	//endregion 
+
+	//region Face selection if view direction not orthogonal to one of the 4 faces of the ref genbeam
+	// Get face of insertion
+		Body bd = gbRef.envelopeBody(false, true);
+		Quader qdr(gbRef.ptCen(), gbRef.vecX(), gbRef.vecY(), gbRef.vecZ(), gbRef.solidLength(), gbRef.solidWidth(), gbRef.solidHeight(), 0, 0, 0);
+		int bIsOrthoView = gbRef.vecD(vecZView).isParallelTo(vecZView);	
+		vecFace = bIsOrthoView?vecZView:gbRef.vecD(vecZView);
+
+	// set face
+		if (vecFace.isParallelTo(vecX))
+		{
+			reportMessage("\n"+ scriptName() + T("|Insertion in YZ-Plane not supported| ")+T("|Tool will be deleted.|"));
+			eraseInstance();
+			return;
+		}		
+
+		if (!bIsOrthoView)
+		{
+			int nFaceIndex = - 1;
+			int bFront = true; // default to pick a face on viewing side
+			Map mapArgs, mapFaces;
+			mapArgs.setInt("_Highlight", in3dGraphicsMode()); 
+			mapArgs.setDouble("ConeRadius", dRadius);
+			mapArgs.setDouble("ConeDepth", dConeDepth);
+			mapArgs.setDouble("Diameter", dDiameter);
+			mapArgs.setInt("showFront", bFront);		
+	
+		// Set Faces and profiles
+			Vector3d vecFaces[0];
+			if (bRefIsBeam)
+			{ 
+				Vector3d vecs[] ={ gbRef.vecY(), gbRef.vecZ() , - gbRef.vecY(), - gbRef.vecZ()};
+				vecFaces = vecs;
+			}
+			else
+			{ 
+				Vector3d vecs[] ={ gbRef.vecZ() ,- gbRef.vecZ()};
+				vecFaces = vecs;				
+			}
+			
+			
+			PlaneProfile ppFace,pps[0];//yz-y-z
+			for (int i=0;i<vecFaces.length();i++) 
+			{ 
+				Vector3d vecFaceI = vecFaces[i];
+				PlaneProfile pp = bd.extractContactFaceInPlane(Plane(gbRef.ptCen()+vecFaceI*.5*gbRef.dD(vecFaceI), vecFaceI), U(1)); 
+				pps.append(pp);
+				mapFaces.appendPlaneProfile("pp", pp);
+				
+				if (bIsOrthoView && vecFace.isCodirectionalTo(vecFaceI))
+				{
+					nFaceIndex = i;
+					ppFace = pp;
+					mapArgs.setInt("FaceIndex", nFaceIndex);
+				}
+				
+			}//next i
+			mapArgs.setMap("Face[]", mapFaces);				
+			
+		//region Face selection
+			int nGoJig = -1;
+			PrPoint ssP(T("|Select face|")+ T(" |[Flip face]|"));
+			ssP.setSnapMode(TRUE, 0); // turn off snaps
+		    while (!bIsOrthoView && nGoJig != _kOk && nGoJig != _kNone)
+		    {
+		        nGoJig = ssP.goJig(kJigSelectFace, mapArgs); 
+	
+		        if (nGoJig == _kOk)
+		        {
+		            Point3d ptPick = ssP.value();
+					int index;
+					for (int i=0;i<pps.length();i++) 
+					{
+						PlaneProfile pp = pps[i];
+						CoordSys cs = pp.coordSys();
+						Vector3d vecZ = cs.vecZ();
+						if (vecZ.isPerpendicularTo(vecZView))continue;
+						Point3d ptOrg = cs.ptOrg();
+						double dFront = vecZ.dotProduct(vecZView);
+						if((dFront>0 && bFront) || (dFront<0 && !bFront)) // accept only profiles in view wirection or opposite
+						{
+							Point3d pt = ptPick;
+							Line(pt, vecZView).hasIntersection(Plane(ptOrg, vecZ), pt);
+							if (pp.pointInProfile(pt)==_kPointInProfile)
+								index = i;
+						}
+					}    
+		            
+		            if (index>-1)
+		            { 
+		            	vecFace = gbRef.vecD(pps[index].coordSys().vecZ());	
+		            	mapArgs.setInt("FaceIndex", index);
+		            	nFaceIndex = index;
+		            	ppFace = pps[index];	
+		            }  
+		        } 
+		    	else if (nGoJig == _kKeyWord)
+		        { 
+		        // toggle in or opposite view	
+		            if (ssP.keywordIndex() == 0)
+		            {
+		            	bFront =!bFront;
+		            	mapArgs.setInt("showFront", bFront);
+		            }    
+		        }   
+		        else
+		        { 
+		            eraseInstance(); // do not insert this instance
+		            return; 
+		        }
+		    }			
+			//End Face selection//endregion 		
+			ssP.setSnapMode(false, 0); // turn on snaps	
+	
+		}
+		// orthogonal view, set ref or top side
+		else
+		{ 
+			vecFace*=nFace; 
+		}
+		
+		dH = gbRef.dD(vecFace);
+		ptFace = gbRef.ptCen() + .5 * vecFace * dH;
+		pnFace = Plane(ptFace, vecFace);
+		_Map.setVector3d("vecFace", vecFace);
+	//endregion 
+
+	
+	// no jig when inserting circles
+		if (circles.length()>0)
+		{ 
+			dDiameter.set(0); // set to 0 specify by circle when created
+			EntCircle c = circles.first();
+			Vector3d vec = c.normal();
+			if (!Line(c.ptCen(), c.normal()).hasIntersection(pnFace, _Pt0))
+				_Pt0 = c.ptCen();
+			_GenBeam.append(genbeams);
+			setExecutionLoops(2);
+			return;
+		}
+
+
+
+	// purge polylines not aligned with normal of face
+		for (int i=epls.length()-1; i>=0 ; i--) 
+		{  
+			PLine pl = epls[i].getPLine();
+			if (!pl.coordSys().vecZ().isParallelTo(vecFace)) 
+			{
+				reportMessage("\n" + T("|Polylines must be drawn parallel to tool plane|"));	
+				int n = _Entity.find(epls[i]);
+				if (n>-1)
+					_Entity.removeAt(n);
+				epls.removeAt(i);
+			}				
+		}//next i		
+
+	// Pick path if nothing selected	
+		if (epls.length()<1 )//&& gbFemales.length()<1
+		{ 
+			CoordSys csFace(ptFace, gbRef.vecX(), gbRef.vecX().crossProduct(-vecFace), vecFace);
+			ppRange=PlaneProfile(csFace);
+			for (int i=0;i<genbeams.length();i++) 
+			{ 
+				Sip sip = (Sip)genbeams[i];
+				Sheet sheet= (Sheet)genbeams[i];
+				
+				Body bd = genbeams[i].envelopeBody(true, true);
+				PlaneProfile pp(csFace);
+				pp = bd.extractContactFaceInPlane(pnFace, dEps);		
+	
+				PLine plOpenings[0];
+				if (sip.bIsValid())plOpenings= sip.plOpenings();
+				else if (sheet.bIsValid())plOpenings= sheet.plOpenings();	
+				for (int j=0;j<plOpenings.length();j++) 
+					pp.joinRing(plOpenings[j],_kSubtract); 
+
+				pp.shrink(-dEps);
+				ppRange.unionWith(pp); 
+			}//next i
+			ppRange.shrink(dEps);
+			
+			
+			
+			
+			
+		//region Show Jig
+			String prompt = T("|Pick point|");
+			PrPoint ssP(prompt); // second argument will set _PtBase in map
+		    Map mapArgs;
+		    mapArgs.setInt("_Highlight", in3dGraphicsMode()); 
+		    mapArgs.setVector3d("vecX", vecX);
+		    mapArgs.setVector3d("vecY", vecY);
+		    mapArgs.setVector3d("vecZ", vecZ);
+		    mapArgs.setVector3d("vecFace", vecFace);
+		    mapArgs.setPoint3d("ptFace", ptFace);
+		    mapArgs.setDouble("dH", dH);
+			mapArgs.setMap("PropertyMap", mapWithPropValues());
+  			
+	    	
+	    	mapArgs.setPlaneProfile("range", ppRange);
+
+		    Point3d pts[0];
+		    int nGoJig = -1;
+		    prompt = T("|Pick point [FIxed/Even/Vertex/flipFAce]|");
+		    while (nGoJig != _kNone)
+		    {
+		        nGoJig = ssP.goJig(kJigGripDistribute, mapArgs); 
+		        ptFace = gbRef.ptCen() + .5 * vecFace * dH;
+		        pnFace = Plane(ptFace, vecFace);
+		        
+		        mapArgs.setVector3d("vecFace", vecFace);
+		    	mapArgs.setPoint3d("ptFace", ptFace);
+		        
+		        if (nGoJig == _kOk)
+		        {
+		            Point3d pt = ssP.value(); //retrieve the selected point
+		            pts.append(pt);
+		            Line(pts.last(), vecFace).hasIntersection(pnFace, pt); 
+
+		            mapArgs.setPoint3dArray("pts", pts); 
+		           
+		        // single location   
+		            if (bIsSingleLocation)
+		            { 	            	
+		            	if (pts.length()==1)
+		            	{
+		            		mapArgs.setInt("isSingleLocation", bIsSingleLocation);
+		            		prompt = T("|<Enter> or pick point on axis [Depth/DIameter/flipFAce]|");
+		            	}
+		            	else if (pts.length()>1)
+		            	{ 		            		
+		            		Vector3d vecZT = pt - pts.first();
+		            		if (vecZT.isPerpendicularTo(vecFace))
+				    		{ 
+				    			Plane pnOpp=Plane(ptFace-vecFace*(dDepth<=0?dH:dDepth), -vecFace);
+				    			Line(pt, vecFace).hasIntersection(pnOpp, pt);
+				    			vecZT = pt - pts.first(); 
+				    		}
+				    		vecZT.normalize();
+						    if (vecZT.dotProduct(vecFace) > 0)vecZT *= -1;        		
+
+							double rotation, bevel = setBevelRotation(vecZT, vecFace, vecX, vecZ, rotation);
+							if (abs(bevel)>0 && abs(bevel)<90)
+							{ 								
+								if (sFace == kTopFace)
+									rotation *= -1;
+								dBevel.set(bevel);
+								dRotation.set(rotation);
+							}
+							pts.setLength(1);
+							break;
+		            	}
+		            	ssP=PrPoint (prompt, pt);	
+		            }
+		            else
+		            {             
+			            ssP=PrPoint (prompt, pt);		            	
+		            }
+
+		        }
+		        else if (nGoJig == _kKeyWord)
+		        { 
+		        	int key = ssP.keywordIndex();
+		        	if (bIsSingleLocation)
+		        	{ 
+			            if (key == 0)//depth
+			            {
+			            	double d = getDouble(T("|Enter depth (0 = complete through)|"));
+			            	if (d >= 0)dDepth.set(d);
+			            }
+			            else if (key == 1)//diameter
+			            {
+			            	double d = getDouble(T("|Enter diameter| (") + dDiameter + ") ");
+			            	if (d > 0)dDiameter.set(d);
+			            }
+						else if (key == 2)//flipFace
+			            { 
+			            	sFace.set(sFace == kReferenceFace ? kTopFace:kReferenceFace );
+			            	vecFace *= -1;
+	
+			            	ptFace +=vecFace * dH;	//ptFace = gbRef.ptCen() + .5 * vecFace * dH;
+			            	pnFace = Plane(ptFace, vecFace);
+			            	reportNotice("\nptFace  ater key " + ptFace.Z() + " " + vecFace);
+			            	
+			            	for (int i=0;i<pts.length();i++) 
+			            		Line(pts[i], vecFace).hasIntersection(pnFace, pts[i]); 
+			            	
+			            	mapArgs.setPoint3dArray("pts", pts);
+			            	mapArgs.setPoint3d("ptFace", ptFace);
+			            	mapArgs.setVector3d("vecFace", vecFace);		            	
+			            	_Map.setVector3d("vecFace", vecFace);
+	
+//			            	if (pts.length()>0)
+//			            		ssP=PrPoint (prompt, pts.last());
+			            }			            
+//						else if (key == 2)//sinkDepth
+//			            {
+//			            	double d = getDouble(T("|Enter depth| (") + dSinkDepth+ ") ");
+//			            	dSinkDepth.set(d);
+//			            }
+//						else if (key == 3)//sinkDiameter
+//			            {
+//			            	double d = getDouble(T("|Enter diameter| (") + dSinkDiameter + ") ");
+//			            	if (d >= 0)dSinkDiameter.set(d);
+//			            }			            
+			      	}
+		        	else
+		        	{ 
+			            if (key == 0)//fixed
+			                nDistributionMode = 0;
+			            else if (key == 1)//even
+			                nDistributionMode = 1;
+			           	else if (key == 2) // vertex
+			                nDistributionMode = 1;    
+			            else if (key == 3)
+			            { 
+			            	sFace.set(sFace == kReferenceFace ? kTopFace:kReferenceFace );
+			            	vecFace *= -1;
+	
+			            	ptFace = gbRef.ptCen() + .5 * vecFace * dH;
+			            	pnFace = Plane(ptFace, vecFace);
+			            	
+			            	for (int i=0;i<pts.length();i++) 
+			            		Line(pts[i], vecFace).hasIntersection(pnFace, pts[i]); 
+			            	
+			            	mapArgs.setPoint3dArray("pts", pts);
+			            	mapArgs.setPoint3d("ptFace", ptFace);
+			            	mapArgs.setVector3d("vecFace", vecFace);		            	
+			            	_Map.setVector3d("vecFace", vecFace);
+	
+			            	if (pts.length()>0)
+			            		ssP=PrPoint (prompt, pts.last());
+			            }		        		
+		        	}
+		                
+		            sDistributionMode.set(sDistributionModes[nDistributionMode]);
+		            mapArgs.setMap("PropertyMap", mapWithPropValues());
+		        }
+		        else if (nGoJig == _kCancel)
+		        { 
+		            eraseInstance(); // do not insert this instance
+		            return; 
+		        }
+		    }// do while
+	    	_PtG.append(pts);	    
+		//End Show Jig//endregion 
+			
+			if(_PtG.length()<2 && dInterdistance>0)
+			{
+				reportMessage("\n"+ scriptName() + T("|requires at least two grip points|, ")+T("|Tool will be deleted.|"));
+				eraseInstance();
+				return;
+			}
+			else if (_PtG.length()<1)
+			{ 
+				eraseInstance();
+				return;				
+			}
+		}	
+	}	
+// end on insert	__________________//endregion
+
+//region References
+	else
+	{ 
+		setReadOnlyFlagOfProperties();
+		genbeams = _GenBeam;
+		if(genbeams.length()>0)
+		{
+			gbRef = genbeams.first();		
+			vecX = gbRef.vecX();
+			vecY = gbRef.vecY();
+			vecZ = gbRef.vecZ();
+		
+			vecFace = _Map.hasVector3d("vecFace") ? _Map.getVector3d("vecFace") : nFace*vecZ;
+			
+			dH = gbRef.dD(vecFace);
+			ptFace = gbRef.ptCen() + .5 * vecFace * dH;	
+			vecFace.vis(ptFace, 4);
+			
+			
+		// auto correct face property
+			if (_kNameLastChangedProp!=sFaceName)
+			{ 
+				if (vecFace.isParallelTo(vecZ))
+				{ 
+					if (vecFace.isCodirectionalTo(vecZ) && sFace == kReferenceFace)sFace.set(kTopFace);
+					else if (vecFace.isCodirectionalTo(-vecZ) && sFace == kTopFace)sFace.set(kReferenceFace);		
+				}
+				else if (vecFace.isParallelTo(vecY))
+				{ 
+					if (vecFace.isCodirectionalTo(vecY) && sFace == kReferenceFace)sFace.set(kTopFace);
+					else if (vecFace.isCodirectionalTo(-vecY) && sFace == kTopFace)sFace.set(kReferenceFace);		
+				}				
+			}
+		}
+	
+		
+	// set defining from classic grips
+		if (_PtG.length()>0)
+		{ 
+			PLine pl(vecFace);
+			for (int i=0;i<_PtG.length();i++) 
+			{ 
+				_PtG[i] += vecFace * vecFace.dotProduct(ptFace - _PtG[i]);
+				addRecalcTrigger(_kGripPointDrag, "_PtG"+i);
+				pl.addVertex(_PtG[i]); 		 
+			}//next i
+			
+			if (pl.length()<dEps)
+			{
+				bIsSingleLocation = true;
+				pl.addVertex(_PtG[0]+vecX*dEps); 
+			}
+			
+			plines.append(pl);
+		}
+	// set defining from grips
+		else if (bHasGripVertices)
+		{ 
+			PLine pl(vecFace);
+			Point3d pt0 = _Pt0;
+			for (int i=0;i<nVertexIndices.length();i++) 
+			{ 
+				Point3d pt = _Grip[nVertexIndices[i]].ptLoc();
+				 pt+= vecFace * vecFace.dotProduct(ptFace - pt);
+				pl.addVertex(pt); 
+				if(i==0)
+					pt0 = pt;
+			}//next i
+			
+			if (pl.length()<dEps)
+			{
+				bIsSingleLocation = true;
+				pl.addVertex(pt0+vecX*dEps); 
+			}
+			
+			plines.append(pl);
+		}		
+	// get defining plines from entity
+		else
+		{ 
+			if (!bDrawContour && !bDrawAxis) // make sure something is drawn
+			{ 
+				bDrawContour = true;
+			}
+			for (int i=0;i<_Entity.length();i++) 
+			{ 
+				BlockRef bref= (BlockRef)_Entity[i];
+				EntPLine epl= (EntPLine)_Entity[i]; 
+				if (epl.bIsValid())
+				{ 
+					PLine pl = epl.getPLine();
+					if (pl.length()>dEps)
+					{ 
+						epls.append(epl);
+						epl.assignToGroups(gbRef, 'T');
+						plines.append(pl);
+						setDependencyOnEntity(_Entity[i]);
+					}
+				}
+			}//next i			
+		}
+	}		
+
+	if (genbeams.length()<1 && !bJig)
+	{ 
+		reportMessage("\n"+ scriptName() + T("|requires at least one genbeam|, ")+T("|Tool will be deleted.|"));			
+		eraseInstance();
+		return;
+	}	
+//endregion
+
+//region Transform grips to relevant face
+	for (int i=0;i<nVertexIndices.length();i++)
+	{ 
+		Grip& g = _Grip[nVertexIndices[i]];
+		Point3d pt = g.ptLoc();
+		pt += vecFace * vecFace.dotProduct(ptFace - pt);
+		g.setPtLoc(pt);				
+	}		
+//endregion 
+
+
+
+
+//region bOnInsert #2
+	if(_bOnInsert)
+	{
+		_GenBeam.append(genbeams);
+		_Pt0 = ptFace;
+		return;
+	}	
+// end on insert	__________________//endregion
+
+//endregion //Part #2
+
+//region Part #3
+
+
+// Store ThisInst in _Map to enable debugging with subMapX until HSB-22564 is implemented
+	TslInst this = _ThisInst;
+	if (bDebug && _Map.hasEntity("thisInst"))
+	{
+		Entity ent = _Map.getEntity("thisInst");	
+		this = (TslInst)ent;
+	}
+	else if (!bDebug && (_bOnDbCreated || !_Map.hasEntity("thisInst")))
+		_Map.setEntity("thisInst", this);
+	
+
+
+//region General
+	Map mapRequests, mapDimInfo;
+	
+	int bIsCircleMode = sDistributionMode == tCircle;
+	int bIsVertexMode = sDistributionMode == tVertex;
+	int bIsFreeDrillMode = sDistributionMode == tFreeDrill;
+
+	int bIsThrough = abs(dDepth)<dEps;	
+	int bHasCone = dAngle > dEps;
+	int bHasCone2 = dAngle2 > dEps;
+	int bHasSlotX = dSlotLength > dDiameter;
+	int bHasSlotY = dSlotWidth > dDiameter;
+	int bHasSlotXY = bHasSlotX && bHasSlotY;
+	int bHasBevel = abs(dBevel) > dEps;
+
+	
+// Circle and free drill mode do not provide some properties
+	if (bIsCircleMode || bIsFreeDrillMode)
+	{ 
+		dInterdistance.set(0);
+		nNumRow.set(0);
+		sRowOffsetList.set("");
+		sColumnOffsetList.set("");
+		dBevel.set(0);
+		dRotation.set(0);
+		
+		dInterdistance.setReadOnly(_kHidden);
+		sDistributionMode.setReadOnly(bIsCircleMode);
+		nNumRow.setReadOnly(_kHidden);
+		sRowOffsetList.setReadOnly(_kHidden);
+		sColumnOffsetList.setReadOnly(_kHidden);
+		dBevel.setReadOnly(_kHidden);
+		dRotation.setReadOnly(_kHidden);	
+		dSlotLength.setReadOnly(_kHidden);
+		dSlotWidth.setReadOnly(_kHidden);				
+	}
+
+	
+	Quader qdr(gbRef.ptCen(), vecX, vecY, vecZ, gbRef.solidLength(), gbRef.solidWidth(), gbRef.solidHeight(),0,0,0);
+	
+// control relative depth
+	if ((bIsLocked || bIsRelative) && dRelativeDepthMain2Sink>0)
+	{ 
+		double d = bIsThrough ? dH : dDepth;
+		d -= dRelativeDepthMain2Sink;
+		if (abs(d-dSinkDepth)>dEps)
+			dSinkDepth.set(d);
+// TODO
+//		if (abs(d-dSinkDepth2)>dEps)
+//			dSinkDepth2.set(d);			
+	}
+	
+	
+	
+	
+//	dAngle.setReadOnly((bDebug || !bHasSink) ? 0:_kReadOnly);	
+//	dSinkDiameter.setReadOnly((bDebug || !bHasCone) ? 0:_kReadOnly);
+//	dSinkDepth.setReadOnly((bDebug || !bHasCone) ? 0:_kReadOnly);
+	
+	int bRevertDirection = _Map.getInt(kRevertDirection);
+
+
+	if (bIsSingleLocation && !bIsCircleMode && !bIsFreeDrillMode)
+	{ 
+		sColumnOffsetList.set("");
+		sColumnOffsetList.setReadOnly(bDebug?false:_kHidden);
+		dInterdistance.set(0);
+		dInterdistance.setReadOnly(bDebug?false:_kHidden);
+		
+		nQuantity.setReadOnly(bDebug?false:_kHidden);
+		nNumRow.setReadOnly(bDebug?false:_kHidden);
+		sRowOffsetList.setReadOnly(bDebug?false:_kHidden);
+		sColumnOffsetList.setReadOnly(bDebug?false:_kHidden);
+	}
+
+
+// get cone diameter
+	double radius = dDiameter * .5;
+	
+	
+//region Sink / Cone 1
+	double sinkRadius = dSinkDiameter * .5;	
+	double dConeDepth,dConeRadius;	
+	double sinkDepth = dSinkDepth;
+	double dConeHeight;
+	double sinkDelta1 = dSinkDiameter - dDiameter;
+	if (abs(dAngle)>0)
+	{ 
+		dConeHeight = radius / tan1;
+		
+	// Cone depth, Sink depth given, else get auto depth 
+		dConeDepth = dSinkDepth>0?dSinkDepth:dConeHeight;
+		
+	// Cone radius: Sink radius given, else get auto depth	
+		if (dSinkDiameter>radius)
+			dConeRadius = sinkRadius;
+		else if (dSinkDiameter<dEps && dSinkDepth>dEps)
+		{
+			dConeRadius=dSinkDepth*tan1+radius;
+		}
+		else
+			dConeRadius=dConeDepth*tan1;
+		
+	// Only angle given	
+		if (dSinkDepth<dEps && dSinkDiameter<dEps)
+			dConeRadius += radius;
+
+		if (dConeRadius>sinkRadius && sinkRadius<dEps)
+			sinkRadius = dConeRadius;
+		if (dConeDepth<sinkDepth)
+			sinkDepth -= dConeDepth;				
+	}
+	int bHasSink= sinkDepth > dEps && sinkRadius > radius;		
+	
+	
+//endregion 	
+
+//region Sink / Cone 2	
+	double sinkRadius2 = dSinkDiameter2 * .5;	
+	double dConeDepth2,dConeRadius2;	
+	double sinkDepth2 = dSinkDepth2;
+	double dConeHeight2;
+	double sinkDelta2 = dSinkDiameter2 - dDiameter;
+
+	if (abs(dAngle2)>0)
+	{ 
+		dConeHeight2 = radius / tan2;
+		
+	// Cone depth, Sink depth given, else get auto depth 
+		dConeDepth2 = dSinkDepth2>0?dSinkDepth2:dConeHeight2;
+		
+	// Cone radius: Sink radius given, else get auto depth	
+		if (dSinkDiameter2>radius)
+			dConeRadius2 = sinkRadius2;
+		else if (dSinkDiameter2<dEps && dSinkDepth2>dEps)
+		{
+			dConeRadius2=dSinkDepth2*tan2+radius;
+		}
+		else
+		{
+			dConeRadius2=dConeDepth2*tan2;	
+		}
+
+	// Only angle given	
+		if (dSinkDepth2<dEps && dSinkDiameter2<dEps)
+			dConeRadius2 += radius;
+
+		if (dConeRadius2>sinkRadius2 && sinkRadius2<dEps) //&& abs(sinkDepth)>dEps)
+			sinkRadius2 = dConeRadius2;
+		if (dConeDepth2<sinkDepth2)
+			sinkDepth2 -= dConeDepth2;		
+		
+	}
+	int bHasSink2 = sinkDepth2 > dEps && sinkRadius2 > radius;	
+//endregion 	
+
+	if (!bJig)
+	{
+		this.setAllowGripAtPt0(false);
+		setCloneDuringBeamSplit(_kAuto);
+		setKeepReferenceToGenBeamDuringCopy(_kAllBeams);
+		this.setDrawOrderToFront(true);
+//		setEraseAndCopyWithBeams(_kBeam0);
+		Element el = gbRef.element();
+		if (el.bIsValid())
+			assignToElementGroup(el, true, 0, 'T');
+		else
+			assignToGroups(gbRef, 'T');
+	}
+	
+		
+	Display dpModel(0);
+	if (nc<=255)
+	{ 
+		dpModel.color(nc);
+		if (nt > 0 && nt < 100)dpModel.transparency(nt);
+	}
+	else
+		dpModel.trueColor(nc,nt);
+		
+		
+	
+
+
+//endregion 
+
+//region Fastener Relations
+
+	int bCreateFasteners = sDefinition !=tDisabled && (_bOnDbCreated || _kNameLastChangedProp == sDefinitionName || (_kNameLastChangedProp == sFastenerLengthName && dFastenerLength<=0));
+	FastenerAssemblyEnt faes[] = this.getAttachedFasteners(); 
+	if (sDefinition!=tDisabled)
+		_ThisInst.resetFastenerGuidelines();
+	// purge existing when set to disabled
+	else
+	{ 
+		for (int i=faes.length()-1; i>=0 ; i--) 
+			if (faes[i].bIsValid())
+				faes[i].dbErase(); 	
+	}
+
+
+//endregion 
+
+
+
+
+
+//region Get individual and common profile
+	dH = gbRef.dD(vecFace);
+	CoordSys csFace(ptFace, vecX, vecX.crossProduct(-vecFace), vecFace);
+	pnFace=Plane (ptFace, vecFace);
+	Plane pnOpp(ptFace - vecFace * dH, - vecFace);
+	
+	
+	Body bodies[0], bodiesEnv[0];
+	PlaneProfile pps[0];//, ppOpp(CoordSys(ptFace-vecFace*dH, vecX, vecX.crossProduct(vecFace), -vecFace));
+	PlaneProfile ppShadow(csFace);
+	if (!bJig || bDrag)
+		ppRange=PlaneProfile(csFace);
+		
+	for (int i=0;i<genbeams.length();i++) 
+	{ 
+		GenBeam& g = genbeams[i];
+		Sip sip = (Sip)g;
+		Sheet sheet= (Sheet)g;
+		
+		Body bd = g.envelopeBody(true, true);
+		bodies.append(bd);
+		PlaneProfile shadow = bd.shadowProfile(pnFace);
+		
+		bodiesEnv.append(g.envelopeBody());
+		PlaneProfile pp(csFace);
+		pp = bd.extractContactFaceInPlane(pnFace, dEps);		
+		//pp.joinRing(genbeams[i].plEnvelope(), _kAdd);
+
+		PLine plOpenings[0];
+		if (sip.bIsValid())plOpenings= sip.plOpenings();
+		else if (sheet.bIsValid())plOpenings= sheet.plOpenings();	
+
+		for (int j=0;j<plOpenings.length();j++) 
+		{
+			pp.joinRing(plOpenings[j],_kSubtract);
+			shadow.joinRing(plOpenings[j],_kSubtract);			
+		}
+		
+		shadow.shrink(-dEps);
+		ppShadow.unionWith(shadow);
+		
+		
+		pps.append(pp);
+		pp.shrink(-dEps);
+		ppRange.unionWith(pp); 
+		
+//		if (bIsCircleMode)
+//		{ 
+//			pp = bd.extractContactFaceInPlane(pnOpp, dEps);
+//			ppOpp.unionWith(pp);			
+//		}
+
+		
+	}//next i
+	ppRange.shrink(dEps);
+	ppShadow.shrink(dEps);
+	//ppShadow.vis(4);
+	//ppRange.vis(3);
+	//ppOpp.vis(6);
+//endregion
+		
+//region Circle Dependency
+	String sCircleKeys[0], sUniqueKeys[0];
+	if (bIsCircleMode)
+	{ 
+	// Collect drillDistribution instances of my genbeams
+		TslInst tslSiblings[0];
+		for (int i=0;i<_GenBeam.length();i++) 
+		{ 
+			Entity tents[] = _GenBeam[i].eToolsConnected(); 
+			for (int j=0;j<tents.length();j++)  
+			{ 
+				TslInst t = (TslInst)tents[j];
+				if (t.bIsValid() && t.scriptName()==scriptName() && t!=_ThisInst && t.propString(sFaceName)==sFace)
+					tslSiblings.append(t);
+			}
+		}//next i
+
+	//region Collect circles and purge invalids
+		Point3d ptCens[0];Vector3d vecNs[0];double radii[0];
+		for (int i=_Entity.length()-1; i>=0 ; i--) 
+		{ 
+			EntCircle c= (EntCircle)_Entity[i]; 
+			if (c.bIsValid())
+			{ 
+				Vector3d vec = c.normal();
+				Point3d pt = c.ptCen();
+				double r = c.radius();
+				
+			// edge drills are not supported yet	
+				int bRemove = vec.isPerpendicularTo(vecFace);
+			
+			// remove if found as reference of a sibling
+				for (int j=0;j<tslSiblings.length();j++) 
+				{ 
+					Entity ents[]= tslSiblings[j].entity(); 
+					if (ents.find(c)>-1)
+					{ 
+						reportMessage(TN("|circle already linked to other tool| " + pt));
+						bRemove = true;
+						break;
+					}
+				}//next j
+				if (bRemove)
+				{ 
+					_Entity.removeAt(i);
+					continue;
+				}
+
+			// the face selection has priority of the normal of the circle	
+				if(vec.dotProduct(vecFace)<0) 
+					vec *= -1;
+	
+			// circles on or above the surface are expressing complete through drills
+				double depth = vec.dotProduct(ptFace - pt);
+				if (depth<=dEps)depth = 0;
+	
+				PLine pl; pl.createCircle(pt, vec, r);
+				PlaneProfile ppa(pl);
+				PlaneProfile ppb = ppa;
+				ppa.project(pnFace,vec, dEps);	//ppa.vis(2);
+				ppb.project(pnOpp,vec, dEps);	//ppb.vis(2);
+				
+				int bAccept = ppa.intersectWith(ppRange);// || ppb.intersectWith(ppOpp);
+				if (bAccept)
+				{ 
+					bAccept = acceptCircle(pt, r, vec, ptCens, radii, vecNs);
+					if (!bAccept)
+					{ 
+						reportMessage(TN("|Duplicated circle removed from selection set at| ") + pt + " " + T(", |Radius|:")+r);
+					}
+					
+				}
+				
+				if (bAccept)
+				{
+					circles.append(c);//ppa.vis(3);//pt.vis(i);
+					setDependencyOnEntity(c);				
+					Map m;
+					m.setDouble("Radius",r*10);
+					m.setDouble("Depth",depth);
+					m.setString("Normal",vec);
+					
+					String key = c.formatObject("@(Radius:RL0:PL4;0)_@(Normal)_@(Depth:RL0:PL5;0)", m);
+					sCircleKeys.append(key);
+					if (sUniqueKeys.findNoCase(key,-1)<0)
+						sUniqueKeys.append(key);
+				}
+				else
+				{ 
+					_Entity.removeAt(i);
+				}
+			}		 
+		}//next i
+		//Collect circles and purge invalids //endregion 
+
+	// Invalid selection
+		if(circles.length()<1 && indexOfMovedGrip<0)
+		{
+			reportNotice("\n" + scriptName()+ T(": |Invalid selection set, removing tool|"));
+			eraseInstance();
+			return;
+		}
+	}
+
+// A variation of circles has been detected	
+	if (sUniqueKeys.length()>0)
+	{ 
+
+
+
+		Point3d pt0;
+		Vector3d vec0;
+		double radius, depth, rotation, bevel;
+		PlaneProfile ppc(csFace);
+	
+	
+	//region Collect all circle locations
+		Point3d ptCens[0];		
+		for (int i=0;i<circles.length();i++) 
+		{ 
+			EntCircle c = circles[i];
+
+			Vector3d vec = c.normal();
+			vec.normalize();
+			Point3d pt = c.ptCen();
+			double r = c.radius();
+			
+		// the face selection has priority of the normal of the circle	
+			if(vec.dotProduct(vecFace)<0) 
+				vec *= -1;
+	
+			PLine pl; pl.createCircle(pt, vec, r);
+			PlaneProfile pp(pl); 
+			ppc.unionWith(pp);
+			
+		// append projected point on face
+			Point3d ptf = pt;
+			Line(pt, vec).hasIntersection(pnFace, ptf);
+			ptCens.append(ptf);	
+			//
+			if (i==0)
+			{ 
+				pt0 = pt;
+				vec0 = vec;
+				radius = r;	
+				depth = vec0.dotProduct(ptf- pt0);
+				if (depth<=dEps)
+					depth = 0;
+			}
+			
+		}//next i		
+				
+	//endregion 
+
+	
+	// Set property by circle geometry if all detected circles have the same radius and orientation	
+		if (sUniqueKeys.length()==1)
+		{ 
+		// circles on or above the surface are expressing complete through drills
+			if (dDepth==0 && !_bOnDbCreated)
+				dDepth.set(depth);
+			if (dDiameter==0)
+				dDiameter.set(radius * 2);	
+			if(_kNameLastChangedProp==sDiameterName || _bOnDbCreated)
+				setExecutionLoops(2);			
+		}
+	// depth and diameter by circle	
+		else
+		{ 
+			dDepth.set(0);
+			dDepth.setReadOnly(true);
+			dDepth.setDescription(T("|The depth of the tool can only be edited by moving the circle as the tool refers to multiple varying circles.|"));
+			
+			dDiameter.set(0);
+			dDiameter.setReadOnly(true);
+			dDiameter.setDescription(T("|The diameter of the tool can only be edited by changing the size of the circle as the tool refers to multiple varying circles.|"));
+		}
+
+	// get a sorting pline
+		PLine rings[] = ppc.allRings(true, false);
+		Point3d pts[0];
+		for (int r=0;r<rings.length();r++) 
+		{ 
+			rings[r].convertToLineApprox(dEps);
+			pts.append(rings[r].vertexPoints(true)); 		 
+		}//next r
+
+		PLine plSort;
+		plSort.createConvexHull(Plane(ptFace, vecFace), pts);
+		//plSort.vis(6);
+
+	// collect relative lohcation to the sorting pline
+		double dDists[0];
+		for (int i=0;i<ptCens.length();i++) 
+		{ 
+			Point3d pt = plSort.closestPointTo(ptCens[i]);
+			double d = plSort.getDistAtPoint(pt);
+			dDists.append(d); 
+		}//next i
+		
+	// order alphabetically
+		for (int i=0;i<dDists.length();i++) 
+			for (int j=0;j<dDists.length()-1;j++) 
+				if (dDists[j]>dDists[j+1])
+				{
+					circles.swap(j, j + 1);
+					ptCens.swap(j, j + 1);
+					dDists.swap(j, j + 1);
+				}
+		
+		if (ptCens.length()>0)
+			_Pt0 = ptCens[0];
+		
+	// reset plines and rebuild from circles
+		plines.setLength(0);
+		
+		PLine pl(vecFace);
+		for (int i=0;i<ptCens.length();i++) 
+		{
+			//ptCens[i].vis(2);
+			pl.addVertex(ptCens[i]);
+		}
+		
+		if (pl.length()<dEps)
+		{
+			bIsSingleLocation = true;
+			pl.addVertex(ptCens[0]+vecX*dEps); 
+		}
+		plines.append(pl);		
+		
+		
+	}
+	
+// Circle Dependency //endregion 	
+
+//region Potential obstacle range
+	PlaneProfile ppObstacle;
+	if (entObstacles.length()>0)
+	{
+		Vector3d vecXFace = vecX.isParallelTo(vecFace)?vecY:vecX;
+		Vector3d vecYFace = vecXFace.crossProduct(-vecFace);
+		ppObstacle = PlaneProfile(CoordSys(ptFace, vecXFace, vecYFace, vecFace));
+		
+		for (int i=0;i<entObstacles.length();i++) 
+		{ 
+			Entity& e = entObstacles[i];
+			GenBeam gb= (GenBeam)e; 
+			PLine pl = e.getPLine();
+			PlaneProfile pp;
+			if (gb.bIsValid())
+			{ 
+				pp = gb.envelopeBody(true, true).shadowProfile(pnFace);				
+			}	
+			else if (pl.length()>0)
+			{ 
+				pl.projectPointsToPlane(pnFace, vecFace);
+				pp = PlaneProfile(pl);
+			}
+			else
+			{ 
+				Quader q = e.bodyExtents();
+				if ((q.pointAt(-1,-1,-1)-q.pointAt(1,1,1)).length()>dEps)
+				{ 
+					Body bd(q.pointAt(0, 0, 0), q.vecX(), q.vecY(), q.vecZ(), q.dX(), q.dY(), q.dZ(), 0, 0, 0);
+					pp = bd.shadowProfile(pnFace);	
+				}			
+			}
+			if (pp.area()>pow(dEps,2))
+			{
+				pp.shrink(-.5*dDiameter);
+				ppObstacle.unionWith(pp); 
+			}
+		}//next i
+
+	//region Reconstruct plines considering obstacles
+		if (ppObstacle.area()>pow(dEps,2))
+		{ 
+			PLine newPlines[0];			
+			for (int i=0;i<plines.length();i++) 
+				newPlines.append(ppObstacle.splitPLine(plines[i], false, false));
+			plines = newPlines;
+			
+			if (plines.length()<1)
+			{ 
+				reportNotice("\n" + scriptName() + T(": |The selected obstacles invalidate the distribution|"));
+				eraseInstance();
+				return;
+			}
+		}
+	//endregion 	
+	}
+//endregion 
+
+//region Show Dim
+	int bShowDim = bDrag || bJig;
+	if (bDrag)
+	{ 
+		for (int i=0;i<_Grip.length();i++) 
+		{ 
+			Grip g = _Grip[i];
+			String name = g.name();
+			if (g.isMoved() && 
+				(name.find("Row",0,false)>-1 || name.find("Interdistance",0,false)>-1 || name.find("depth",0,false)>-1))
+			{ 
+				bShowDim = false;
+				break;
+			}
+		}//next i	
+	}
+	
+	
+	if (bShowDim)
+	{ 
+		Point3d pt = bDrag?grip.ptLoc():ptJig;
+
+		Display dpDim(-1);
+		//dpDim.dimStyle(_DimStyles.first());
+		dpDim.trueColor(white, 0);
+		dpDim.textHeight(dViewHeight * .02);
+		
+		Vector3d vecXD = vecY.isParallelTo(vecFace)?vecZ:vecY;
+		Vector3d vecYD = vecXD.crossProduct(-vecFace); 			
+		Point3d pts[] = ppRange.intersectPoints(Plane(pt, vecYD), true, true);
+		pts.insertAt(0, pt);
+		
+		for (int i=0;i<2;i++) 
+		{ 
+			Vector3d vecZD = vecXD.crossProduct(vecYD);
+			if (vecZD.dotProduct(vecZView) < 0)
+				vecYD*=-1;
+			
+			DimLine dl(pt, vecXD, vecYD);
+			dl.setUseDisplayTextHeight(true);
+			Dim dim(dl,  pts, "<>",  "<>", _kDimPar, _kDimNone); 
+			dim.setReadDirection(5*vecYView - vecXView);
+			dpDim.draw(dim);				
+			//dpDim.draw(sFace, pt, vecXD, vecYD,1,0);		
+			vecXD = vecYD;
+			vecYD = vecXD.crossProduct(-vecFace);			
+			
+			pts = ppRange.intersectPoints(Plane(pt, vecYD), true, true);
+			pts.insertAt(0, pt);
+
+		}//next i			
+	
+	}
+//endregion 
+ 
+//region Grip Managament #GM2
+	String kGripDist = "Interdistance", kGripRow = "Row",kGripCol = "Col", kGripDepth="depth", kGripDepthSink = "sinkdepth", kGripDir = "direction";
+	int nGripDist=-1,nGripRowIndices[0],nGripDepth=-1, nGripSinkDepth = -1, nGripDir=-1, bHasRowGrip,nGripColIndices[0], bHasColGrip;
+
+//region Get potential row and column grips
+	int numsR[0],numsC[0];
+	for (int i=0;i<_Grip.length();i++)
+	{ 
+		Grip& g = _Grip[i];
+		String name = g.name();
+		if (name.find(kGripRow, 0,false)>-1)
+		{
+			String tokens[] = name.tokenize("_");
+			if (tokens.length()>2)
+			{ 
+				nGripRowIndices.append(i);
+				numsR.append(tokens[2].atoi());	
+			}		
+		}
+		else if (name.find(kGripCol, 0,false)>-1)
+		{
+			String tokens[] = name.tokenize("_");
+			if (tokens.length()>2)
+			{ 
+				nGripColIndices.append(i);
+				numsC.append(tokens[2].atoi());	
+			}			
+		}
+		else if (name.find(kGripDist, 0,false)>-1)
+			nGripDist=i;
+		else if (name.find(kGripDepth, 0,false)==0)
+		{
+			nGripDepth=i;
+			continue;
+		}
+		else if (name.find(kGripDir, 0,false)==0)
+		{
+			nGripDir=i;
+			continue;
+		}		
+		else if (name.find(kGripDepthSink, 0,false)==0)
+		{ 
+			nGripSinkDepth=i;	
+			continue;
+		}			
+		else
+		{ 
+			continue;
+		}
+		Point3d pt = g.ptLoc();
+		pt += vecFace * vecFace.dotProduct(ptFace - pt);
+		g.setPtLoc(pt);
+	}
+// order vertex indices ascending
+	for (int i=0;i<nGripRowIndices.length();i++) 
+		for (int j=0;j<nGripRowIndices.length()-1;j++) 
+			if (numsR[j]>numsR[j+1])
+			{
+				numsR.swap(j, j + 1);
+				nGripRowIndices.swap(j, j + 1);	
+			}
+	bHasRowGrip=nGripRowIndices.length()>0;	
+//endregion 
+
+//region Interdistance Grip
+	if (plines.length()>0  && plines.first().vertexPoints(true).length()>1 && dInterdistance>0 && !bIsCircleMode)
+	{ 
+		PLine pl = plines.first();
+		Point3d pts[] = pl.vertexPoints(true);
+		
+		Point3d pt2, ptCol, pt1 = pts[0];
+		if (pl.length()>=dInterdistance)
+			pt2=pl.getPointAtDist(dInterdistance);
+		else
+		{ 
+			pt2 = pts.last();
+			Vector3d vecTan = pl.getTangentAtPoint(pt2);
+			pt2 += vecTan * (pl.length() - dInterdistance);
+		}
+
+		Vector3d vecXT = pl.getTangentAtPoint(pt2);
+		Vector3d vecYT = vecXT.crossProduct(-vecFace);
+		//vecXT.vis(pt2,2);		vecYT.vis(pt2,3);		
+	
+	// Purge existing grip if in vertex mode
+		if (nGripDist>-1 && bIsVertexMode)
+		{ 
+			_Grip.removeAt(nGripDist);
+			nGripDist = -1;
+		}
+	
+	
+	// Modify interdistance by moved row grip
+		else if (nGripDist>-1)
+		{ 
+			Grip& g = _Grip[nGripDist];
+			if (g.isMoved() && _kNameLastChangedProp=="_Grip" && !_bOnGripPointDrag)
+			{ 
+				Point3d ptLoc = g.ptLoc();
+				ptLoc += vecFace * vecFace.dotProduct(ptFace - ptLoc);
+				double newInterdistance = dInterdistance;
+				if (pl.isOn(ptLoc))
+					newInterdistance = pl.getDistAtPoint(ptLoc);
+				else
+					newInterdistance = (ptLoc - pt1).length();
+				
+				if (newInterdistance > dEps)
+				{
+					dInterdistance.set(newInterdistance);
+
+					if (pl.length()>=dInterdistance)
+						pt2=pl.getPointAtDist(dInterdistance);
+					else
+					{ 
+						pt2 = pts.last();
+						Vector3d vecTan = pl.getTangentAtPoint(pt2);
+						pt2 += vecTan * (pl.length() - dInterdistance);
+					}
+					
+					vecXT = pl.getTangentAtPoint(pt2);
+					vecYT = vecXT.crossProduct(-vecFace);
+				}	
+			}
+		
+		// Control grip location
+			g.setVecX(vecXT);
+			g.setVecY(vecYT);
+			g.setPtLoc(pt2);	
+			
+		}
+	// Add Grip	
+		else if (!bDrag && nGripDist<0 && sDistributionMode!=tVertex)
+		{ 
+			Grip g;
+			g.setPtLoc(pt2);
+			g.setVecX(vecXT);
+			g.setVecY(vecYT);
+			g.setColor(4);
+			g.setShapeType(_kGSTDiamond);
+			g.setName(kGripDist);
+			g.setToolTip(T("|Move to modify the interdistance|"));
+			g.addHideDirection(vecX);
+			g.addHideDirection(-vecX);
+			g.addHideDirection(vecY);
+			g.addHideDirection(-vecY);	
+			_Grip.append(g);
+			nGripDist=_Grip.length()-1;			
+		}
+
+
+	}//endregion 
+
+//endregion 
+
+//region Get Distribution Offsets from string properties
+	double dRowOffsets[0];
+	String sRowOffsets[] = sRowOffsetList.tokenize(";");
+	for (int i=0;i<sRowOffsets.length();i++) 
+	{ 
+		double d= sRowOffsets[i].atof();
+		if (abs(d)>dEps)dRowOffsets.append(d);	 
+	}//next i
+	double dColumnOffsets[0];
+	String sColumnOffsets[] = sColumnOffsetList.tokenize(";");
+	for (int i=0;i<sColumnOffsets.length();i++) 
+	{ 
+		double d= sColumnOffsets[i].atof();
+		dColumnOffsets.append(d);	 
+	}//next i	
+
+//endregion
+
+//region Clone plines by row offsets and apply column start offsets
+	PLine plines2[0];
+	if (!bIsCircleMode)
+	{ 
+		for (int j = 0; j < plines.length(); j++)
+		{ 
+			//plines[j].vis(6);
+			//plines[j].coordSys().vecZ().vis(_Pt0, j);
+			if (plines[j].coordSys().vecZ().dotProduct(vecFace) < 0)
+			{
+				plines[j].flipNormal();
+			}
+			
+			
+			double rowOffset;
+			int r,c = dColumnOffsets.length()>1?1:0;
+			if (dRowOffsets.length() > 0)
+			for (int i = 0; i <nNumRow-1; i++)
+			{
+				rowOffset += dRowOffsets[r];
+	
+			// Get trimmed and offseted pline
+				PLine pl = plines[j];
+				pl.offset(nFace*rowOffset, false);			
+				if (c<dColumnOffsets.length())
+				{ 
+					pl.trim(dColumnOffsets[c], false);
+					pl.trim(dColumnOffsets[c], true);	
+				}
+				//pl.vis(i);
+	
+				if (pl.length()>dEps)
+					plines2.append(pl);	
+					
+				r++;				
+				if (r >= dRowOffsets.length())
+					r = 0;
+				c++;				
+				if (c >= dColumnOffsets.length())
+					c = 0;					
+	
+			}//next i
+			
+			if (dColumnOffsets.length() > 0)
+			{
+				plines[j].trim(dColumnOffsets[0], false);
+				plines[j].trim(dColumnOffsets[0], true);					
+			}
+			
+			
+		}
+		plines.append(plines2);			
+	}
+	
+	//END Clone plines //endregion 
+
+//region Grip Management Rows #GM3
+	// not applicable in vertex and circle mode
+	int nValidRowIndices[0];
+	if (sDistributionMode!=tVertex && plines2.length()>0)
+	{
+	// Maintain grips only for offseted plines	
+		int n0 = plines.length()-plines2.length();
+		
+		for (int j=n0;j<plines.length();j++) 
+		{ 
+			int index2 = n0-j; // the index of the offseted pline
+			PLine& pl = plines[j]; //pl.vis(j); 
+	
+		// Try to find start and end grip
+			int nIndices[] = { - 1 ,- 1};
+			for (int i=0;i<_Grip.length();i++) 
+			{ 
+				Grip& g= _Grip[i]; 
+				String name = g.name();
+				if (name.find(kGripRow,0,false)<0){ continue;}
+				
+				String tokens[] = name.tokenize("_");
+				if (tokens.length()>2)
+				{ 
+					int num = tokens[2].atoi();
+					if (num != index2){ continue;}
+					if (tokens[1] == "A")
+						nIndices[0] = i;
+					else
+						nIndices[1] = i;		
+				}					
+			}//next p
+			
+		// not applicable for closed plines	
+			if (pl.isClosed())
+			{
+			// remove if found
+				nIndices = nIndices.sorted();
+				for (int i=nIndices.length()-1; i>=0 ; i--) 
+					if (nIndices[i]>-1 && _Grip[i].name()!=kGripDepth)
+						_Grip.removeAt(nIndices[i]);
+				continue;
+			} 
+				
+		// Add grips if not found
+			for (int i=0;i<nIndices.length();i++) 
+			{ 
+				if (nIndices[i]<0)
+				{
+					Point3d ptLoc = i == 0 ? pl.ptStart() : pl.ptEnd();
+					Vector3d vecXT = (i==0?-1:1)*pl.getTangentAtPoint(ptLoc);
+					//vecXT.vis(ptLoc, i+2);
+					String name = kGripRow + "_" + (i == 0 ? "A" : "B") + "_" + index2;
+					Grip g;
+					g.setPtLoc(ptLoc);
+					g.setVecX(vecXT);
+					g.setVecY(vecXT.crossProduct(vecFace));
+					g.setColor(2);
+					g.setShapeType(_kGSTArrow);
+					g.setName(name);
+					g.setToolTip(T("|Move to stretch the distribution of this row|"));
+					g.addHideDirection(vecX);
+					g.addHideDirection(-vecX);
+					g.addHideDirection(vecY);
+					g.addHideDirection(-vecY);	
+					_Grip.append(g);
+					nIndices[i]=_Grip.length()-1;					 
+				}
+				 
+			}//next i
+
+
+		// Get pline extensions on start and end
+			PLine plExts[] ={ PLine(vecFace), PLine(vecFace)};
+			for (int i=0;i<plExts.length();i++) 
+			{ 
+				if (nIndices[i]<0) { continue;}
+				Grip& g = _Grip[nIndices[i]];
+				PLine& plExt = plExts[i];
+				Point3d pt1 = i == 0 ? pl.ptStart() : pl.ptEnd();
+				Point3d pt2 = i == 0 ? pl.getPointAtDist(dEps) : pl.getPointAtDist(pl.length() - dEps);
+				
+				Vector3d vecXT = (i==0?-1:1)*pl.getTangentAtPoint(pt1);
+				Vector3d vecS = pt2 - pt1; 
+				double s = vecS.length();
+				vecS.normalize();
+
+			// straight at location	
+				int isArc;
+				if (vecXT.isParallelTo(vecS))
+				{
+					plExt.addVertex(pt1);
+					plExt.addVertex(pt1+vecXT*U(10e4));
+				}
+			
+			// arced at location	
+				else
+				{ 
+					isArc = true;
+					Point3d ptm = (pt2 + pt1) * .5;
+					Point3d ptmx = pl.closestPointTo(ptm);
+					Vector3d vecH = ptmx-ptm;	vecH.normalize();		//vecH.vis(ptm, 211);
+					double h = abs(vecH.dotProduct(ptm - ptmx));
+					if (h<=0){ continue;}
+					double r = (4 * pow(h, 2) + pow(s, 2)) / (8 * h);
+					Point3d ptCen = ptmx - vecH * r;					//ptCen.vis(3);
+					plExt.createCircle(ptCen, vecFace, r);
+				}
+				//plExt.vis(index2+3);
+				if (plExt.length()<dEps){ continue;}
+
+			// get location on extension pline
+				Point3d ptLoc = g.ptLoc();
+				Point3d ptLocOnExt = plExt.closestPointTo(ptLoc);	
+				Point3d ptLocNext = plExt.closestPointTo((pt1 + vecXT*dEps));
+
+				Point3d ptNext2Orig = pl.closestPointTo(ptLocOnExt);
+				
+			// if the grip is on the original pline reset grip location
+				if (Vector3d (ptLocOnExt-pl.closestPointTo(ptNext2Orig)).length()<dEps)
+				{ 
+					ptLoc = pt1;
+				}
+				else
+				{ 
+					ptLoc = ptLocOnExt;
+				// the partial extension pline
+					PLine pln(pl.coordSys().vecZ());
+					pln.addVertex(pt1);
+					if (isArc)
+						pln.addVertex(ptLoc, ptLocNext);
+					else 
+						pln.addVertex(ptLoc);	
+		
+					if (pln.length()<dEps){ continue;}
+		
+				// at start
+					if (i==0)
+					{ 
+						pln.reverse();
+						pln.append(pl);
+						pl = pln;
+					}
+					else
+					{ 
+						pl.append(pln);					
+					}					
+				}
+	
+				g.setPtLoc(ptLoc);
+				vecXT = (i==0?-1:1)*pl.getTangentAtPoint(ptLoc);				
+				g.setVecX(vecXT);
+				g.setVecY(vecXT.crossProduct(vecFace));
+			}
+			
+		// collect pline index to enable redundnant grip purging
+			nValidRowIndices.append(index2);
+			
+		}//next j of plines / plines2
+	
+	}
+	
+// purge row grips which are not in use
+	if (_kNameLastChangedProp==sColumnOffsetListName) // purge all when column offsets changed
+	{
+		nValidRowIndices.setLength(0);
+		setExecutionLoops(2);
+	}
+	for (int i=_Grip.length()-1; i>=0 ; i--) 
+	{ 
+		Grip& g=_Grip[i]; 
+		String name = g.name();
+		if (name.find(kGripRow,0,false)>-1)
+		{
+			String tokens[] = name.tokenize("_");
+			if (tokens.length()>2)
+			{ 
+				int num = tokens[2].atoi();
+				if (nValidRowIndices.find(num)<0)
+				{ 
+					_Grip.removeAt(i);
+					//reportNotice("\nremoving grip "+name + " at "+i + " kGripRow " + kGripRow);
+				}
+			}
+		}
+	}//next i
+
+//END Grip Management Rows  //endregion 
+
+//region Convert To Single
+	int bConvertToSingle;
+	String sTriggerConvertToSingle = T("|Convert To Single Tools|");
+	if ((_bOnRecalc && _kExecuteKey==sTriggerConvertToSingle))// || bDebug)
+		bConvertToSingle = true;
+//endregion 
+		
+//Part #3 //endregion 
+
+//region Distribute
+
+	CoordSys csFastenerGuideLine(_Pt0, vecX, vecX, vecX); // init with invalid deteminant
+	double det = csFastenerGuideLine.det();
+	int numDrill;
+	for (int j=0;j<plines.length();j++) 
+	{ 	
+		
+		if (nc<=255)
+		{
+			dpModel.color(nc);
+			dpModel.transparency(bJig?10:nt);	
+		}						
+		else
+			dpModel.trueColor(nc, bJig?10:nt);			
+		
+		
+	//region Evaluate num and dist of columns per pline
+		PLine& pl = plines[j]; 
+		pl.projectPointsToPlane(pnFace, vecFace);
+		if (bRevertDirection)pl.reverse();
+
+		if (bJig)
+		{ 
+			dpModel.draw(pl);
+		}
+		else if (bHasGripVertices && bDrawPath)
+			dpModel.draw(pl);
+
+	// Set coordsys of fastenerGuideline to achieve reproducable offsets on polygonal distributions
+		if (csFastenerGuideLine.det()!=1 && pl.length()>dEps)
+		{ 
+			Point3d pt = pl.ptStart();
+			Vector3d vecXS = pl.getTangentAtPoint(pl.ptStart());
+			Vector3d vecYS = vecXS.crossProduct(vecFace);
+			csFastenerGuideLine = CoordSys(pt, vecXS, vecYS, -vecFace);
+		}
+
+		int numColumn = 1;
+		double dRange = pl.length();
+		double dDist = dInterdistance;
+		Point3d ptsVertices[] = pl.vertexPoints(true);
+		
+		int bIsClosed = pl.isClosed();
+
+		if (nDistributionMode==0 && dDist>0)// fixed
+			numColumn = dRange / dDist;
+		else if (nDistributionMode==1 && dDist>0)// even
+		{
+			numColumn = dRange / dDist+.999999;
+			dDist = dRange / numColumn;
+		}
+		else if (bIsVertexMode)// vertex
+		{
+			numColumn = ptsVertices.length()-1;
+			dDist = 0;
+		}	
+		else if (bIsCircleMode)// vertex
+		{
+			numColumn = circles.length()-1;
+			dDist = 0;
+		}			
+	//endregion 	
+
+	//region Add drills and draw
+		Point3d ptLocs[0], ptSlots[0];// the axis locations and optional center points of the corner centers
+		Map mapLocs;		
+		Plane pn1=pnFace, pn2=pnOpp;
+		PlaneProfile ppShape1, ppShape2;
+		for (int i=0;i<=numColumn;i++)  // HSB-18357 <=
+		{ 
+			
+			if (nc<=255)
+			{
+				dpModel.color(nc);
+				dpModel.transparency(bJig?10:nt);	
+			}						
+			else
+				dpModel.trueColor(nc, bJig?10:nt);			
+			
+			double bevel = dBevel;
+			double rotation = dRotation;
+			double depth = dDepth;
+			double diameter = dDiameter;
+			
+			Point3d pt;			
+			Vector3d vecXS = vecX;
+			Vector3d vecXT, vecYT, vecZT;
+			
+		//region Circle Mode
+			if (bIsCircleMode)
+			{ 
+				EntCircle c = circles[i];
+				
+				Vector3d vec = c.normal();
+				vec.normalize();
+				pt = c.ptCen();
+				Point3d pt0 = pt;
+				double r = c.radius();
+				
+			// the face selection has priority of the normal of the circle	
+				if(vec.dotProduct(vecFace)<0) 
+					vec *= -1;				
+				vecZT = - vec;
+				if (vecZT.isCodirectionalTo(vecZ))//edge
+					vecXT = vecZ;
+				else
+					vecXT = vecX;
+
+				bevel = vecZT.angleTo(vecFace);
+				if (abs(bevel) > 0)bHasBevel = true;
+				pt.vis(2);
+				Line(pt, vec).hasIntersection(pnFace, pt);
+							
+				if (diameter <= 0)
+				{
+					radius = c.radius();
+					diameter = radius * 2;
+				}
+				if (depth <= 0)
+				{
+					depth = vec.dotProduct(pt-pt0);
+					if (depth < 0)depth = 0; // complete through
+				}
+				if (vecFace.dotProduct(ptFace-pt0)<dEps || depth <= 0)
+					bIsThrough = true;				
+				else
+					bIsThrough = false;
+				//pt.vis(3);
+			}				
+		//endregion 	
+
+		//region all other modes
+			else
+			{ 
+				double d = i * dDist;
+	
+				pt = pl.getPointAtDist(d);
+				pt.vis(i);				
+				Point3d ptA=pt, ptB=pt;	
+				if (bIsVertexMode)
+				{
+					pt = ptsVertices[i];
+					d = pl.getDistAtPoint(pt);
+				}
+					
+	
+				if (d<= dEps) 
+				{
+					if (bIsClosed)
+						ptA = pl.getPointAtDist(pl.length()-dEps);
+					ptB = pl.getPointAtDist(dEps);
+				}
+				else if (abs(d-pl.length())<dEps) 
+					ptA = pl.getPointAtDist(d-dEps);
+				else 
+				{
+					ptA= pl.getPointAtDist(d-dEps);
+					ptB= pl.getPointAtDist(d+dEps);
+				}
+				
+				vecXS = ptB - ptA; vecXS.normalize();
+				if (vecXS.bIsZeroLength())vecXS = vecX;
+
+
+				vecXT = vecXS;
+				vecZT = -vecFace;
+
+			}		
+		//endregion 
+
+		//region Tool CoordSys
+			Vector3d vecYS = vecXS.crossProduct(-vecFace);						
+			//vecAxisBevel.vis(_Pt0, 2);
+			CoordSys csBevel;
+			if (!bIsCircleMode && abs(dBevel)>0)
+			{ 			
+				csBevel.setToRotation(dBevel,-nFace*vecYS,pt);//
+				vecXT.transformBy(csBevel);
+				vecZT.transformBy(csBevel);							
+			}
+
+			CoordSys csRot;
+			if (!bIsCircleMode && abs(dRotation)>0)
+			{ 				
+				csRot.setToRotation(dRotation,nFace*vecFace,pt);
+				vecXT.transformBy(csRot);
+				vecZT.transformBy(csRot);				
+			}
+			vecXT.normalize();
+			vecZT.normalize();
+			vecYT = vecXT.crossProduct(-vecZT);		//vecZT.vis(pt, 4);	
+			
+			
+		// depth grip modified
+			if (bOnDragEnd && indexOfMovedGrip == nGripDepth)
+			{ 
+				double d = vecZT.dotProduct(vecOffsetApplied)+dDepth;
+				dDepth.set(d);
+				setExecutionLoops(2);
+				return;
+			}	
+		//endregion 
+					
+		//region Rotation angular dim
+			
+//			vecXT.vis(pt, 1);vecYT.vis(pt, 3);vecZT.vis(pt, 150);
+			
+			if (i==0 & j==0 && bHasBevel && !bIsCircleMode && !bDebug)// 
+			{ 
+				Vector3d vecX1 = -vecFace*U(1);
+				Vector3d vecX2 = vecZT*U(1);
+				Vector3d vecM = vecX1 + vecX2;	vecM.normalize();
+				double radius = (bIsThrough ? dH : depth) + U(10);	//TODO this appears to be odd  7.11.2023
+				Point3d ptArc = pt + vecM * radius;
+				Vector3d vecZDim = qdr.vecD(vecYT);
+				if (vecZDim.dotProduct(vecZView) < 0)vecZDim *= -1;
+				
+				PLine plShape;
+				plShape.addVertex(pt);
+				plShape.addVertex(pt-vecFace*radius);
+				plShape.addVertex(pt+vecZT*radius, ptArc);
+				plShape.close();
+				PlaneProfile shape(plShape);
+				PlaneProfile ppShadow;
+				for (int i=0;i<bodies.length();i++) 
+				{ 
+					PlaneProfile pp = bodies[i].shadowProfile(Plane(pt, vecZDim));
+					if (ppShadow.area() < pow(dEps, 2))ppShadow = pp;
+					else ppShadow.unionWith(pp); 
+					 
+				}//next i
+				shape.intersectWith(ppShadow);
+				//shape.vis(3);
+
+				Map m;
+				m.setPoint3d("ptCenter", pt);
+				m.setPoint3d("ptXline1", pt + vecX1);
+				m.setPoint3d("ptXline2", pt + vecX2);
+				m.setPoint3d("ptArc", ptArc);
+				m.setVector3d("vecInPlane", qdr.vecD(vecFace));
+				m.setVector3d("vecNormal", vecZDim);
+				
+				m.setVector3d("AllowedView", vecZDim);
+				m.setInt("AlsoReverseDirection", true);
+				m.setInt("Color", 0);
+				m.setPlaneProfile("shape", shape);
+				//drawDim(m);//#func
+				
+				mapRequests.appendMap("DimRequest", m);
+
+				if(bDrag || bJig) // || bDebug
+				{ 
+					DimAngular dim(pt,  pt+vecX1,  pt+vecX2,  ptArc);
+					dim.setDimensionPlane(pt, qdr.vecD(vecFace), vecZDim);
+					Display dp(2);
+					dp.draw(dim);						
+				}
+			}
+
+			if (i==0 && j==0 && abs(dRotation)>dEps  && !bIsCircleMode && !bDebug)// && (bDrag || bJig)) // bDebug || 
+			{ 
+				Vector3d vecX1 = vecXS*U(1);
+				Vector3d vecX2 = vecXS*U(1);
+				vecX2.transformBy(csRot);
+				Vector3d vecM = vecX1 + vecX2;	vecM.normalize();
+				double radius = (bIsThrough ? dH : depth) + U(10);
+				Point3d ptArc = pt + vecM * radius;
+				Vector3d vecZDim = qdr.vecD(vecFace);
+				if (vecZDim.dotProduct(vecZView) < 0)vecZDim *= -1; 
+
+				Map m;
+				m.setPoint3d("ptCenter", pt);
+				m.setPoint3d("ptXline1", pt + vecX1);
+				m.setPoint3d("ptXline2", pt + vecX2);
+				m.setPoint3d("ptArc", ptArc);
+				m.setVector3d("vecInPlane", qdr.vecD(vecXView));
+				m.setVector3d("vecNormal", vecZDim);
+
+				vecX1.normalize();
+				vecX2.normalize();
+				
+				PLine plShape(vecZDim);
+				plShape.addVertex(pt);
+				plShape.addVertex(pt+vecX1*radius);
+				plShape.addVertex(pt+vecX2*radius, ptArc);
+				plShape.close();
+				PlaneProfile shape(plShape);
+				PlaneProfile ppShadow;
+				for (int i=0;i<bodies.length();i++) 
+				{ 
+					PlaneProfile pp = bodies[i].shadowProfile(Plane(pt, vecZDim));
+					if (ppShadow.area() < pow(dEps, 2))ppShadow = pp;
+					else ppShadow.unionWith(pp); 
+					 
+				}//next i
+				shape.intersectWith(ppShadow);
+				
+				m.setVector3d("AllowedView", vecZDim);
+				m.setInt("AlsoReverseDirection", true);
+				m.setInt("Color", 0);
+				m.setPlaneProfile("shape", shape);		
+				
+				mapRequests.appendMap("DimRequest", m);
+				
+				if (bDebug || bDrag || bJig)
+				{
+					DimAngular dim(pt,  pt+vecX1,  pt+vecX2,  ptArc);
+					dim.setDimensionPlane(pt, qdr.vecD(vecXView), vecZDim);
+					Display dp(2);
+					dp.draw(dim);				
+				}
+					
+				//drawDim(m);//#func
+
+		
+			}
+	
+		//endregion 
+
+		//region Tool
+			Point3d ptStart= pt; ;// - vecZT * (deltaDepth);	
+			Point3d ptEnd = pt + vecZT * depth;			
+			CoordSys cst(ptStart, vecXT, vecYT , vecZT);
+			
+			PLine c1;
+			c1.createCircle(pt, vecZT, radius < sinkRadius ? sinkRadius : radius);	//c1.vis(6);
+			//PLine pl = getRoundedShape(diameter * .5, dx, dy, PlaneProfile(cst));
+			PLine c2;
+			c2.createCircle(pt, vecZT, radius < sinkRadius2 ? sinkRadius2 : radius);			
+						
+			
+			GenBeam gbsX[]= getGenBeamsIntersect(genbeams, pt, vecZT, radius, bodies);
+			int bHasGenBeamIntersection = gbsX.length() > 0;
+			
+			getExtremePlanes(gbsX, pn1, pn2, vecZT, pt);
+			//pn1.vis(1); pn2.vis(2);
+			CoordSys cs1(pn1.ptOrg(), pn1.vecX(), pn1.vecY(), pn1.vecZ());
+			CoordSys cs2(pn2.ptOrg(), pn2.vecX(), pn2.vecY(), pn2.vecZ());
+			
+			ppShape1 = PlaneProfile(cs1);
+			ppShape2 = PlaneProfile(cs2);
+
+			Line lnDir(pt, vecZT);
+			lnDir.hasIntersection(pn1, ptStart);
+			Point3d ptStartExtreme = ptStart;
+			if (!vecZT.isParallelTo(cs1.vecZ()))
+				double d = transformPointToExtreme(ptStartExtreme, c1, pn1, - vecZT);					
+			//ptStartExtreme.vis(30);
+		
+			Point3d ptEndExtreme = ptEnd;
+			if (bIsThrough)
+			{
+				lnDir.hasIntersection(pn2, ptEnd);
+				if (!vecZT.isParallelTo(cs2.vecZ()))
+					double d = transformPointToExtreme(ptEndExtreme, c2, pn2, vecZT);
+				else
+					ptEndExtreme = ptEnd;
+			}
+			//ptEndExtreme.vis(30);
+
+		//region Convert to single drill
+			if (bConvertToSingle)// || bDebug)
+			{ 
+				
+				double rotation, bevel = setBevelRotation(vecZT, vecFace, vecX, vecZ, rotation);
+				if (sFace == kTopFace)
+				{					
+					rotation =180-rotation;
+					//reportNotice("\nrotation = " + rotation);
+				}
+				
+			// create TSL
+				TslInst tslNew;
+				GenBeam gbsTsl[] = {};		Entity entsTsl[] = {};			Point3d ptsTsl[] = {pt, pt};
+				int nProps[]={1,1,nToolIndex};			
+				double dProps[]={diameter,depth,dSinkDiameter,dSinkDepth,0,bevel,rotation,dAngle,dSlotLength,dSlotWidth,dSinkDiameter2,dSinkDepth2,dAngle2, dOffsetX, dOffsetY, dOffsetZ, dFastenerLength};				
+				String sProps[]={tFixed,"","",sFace,sTool,sSinkMode, sDefinition};
+				Map mapTsl;	
+				
+				gbsTsl = _GenBeam;	
+		
+				if (bDebug)
+					ptsTsl[0].vis(6);
+				else
+					tslNew.dbCreate(scriptName() , vecX ,vecY,gbsTsl, entsTsl, ptsTsl, nProps, dProps, sProps,_kModelSpace, mapTsl);			 			
+			}				
+		//Convert to single drill //endregion 
+
+		
+		// remove potential depth grip
+			if (bIsThrough && gbsX.length()>1 && nGripDepth>-1)
+			{ 
+				_Grip.removeAt(nGripDepth);
+				nGripDepth = -1;
+			}		
+//			vecFace.vis(ptStart,2);
+//			vecXT.vis(ptEnd,1);vecZT.vis(ptEnd,2);ptEnd.vis(4);
+//
+			Point3d ptStartCone = ptStart;	
+			Point3d ptEndCone = ptStartCone+vecZT * dSinkDepth;			
+			Point3d ptEndSink = ptStart + vecZT * sinkDepth;				//ptEndSink.vis(4);
+		
+			Point3d ptStartCone2 = ptEnd;	
+			Point3d ptEndCone2 = ptStartCone2-vecZT * dConeDepth2;			
+			Point3d ptEndSink2 = ptEnd - vecZT * sinkDepth2;				//ptEndSink2.vis(4);
+
+			Body bdCore, bd1, bd2;
+
+			ptLocs.append(pt);
+			numDrill++;
+			
+		//region Manage depth grip
+			if (numDrill==1 && !bIsThrough && sUniqueKeys.length()<2)
+			{ 
+				Vector3d vec = vecZView.crossProduct(vecZT).crossProduct(-vecZT);vec.normalize();
+				// add grip depth
+				if (nGripDepth<0)
+				{ 
+					Grip g;				
+					g.setVecX(vecZT);					
+					g.setVecY(vec);
+					g.setPtLoc(ptEnd+vec.crossProduct(vecZT)*.5*dDiameter);
+					g.setColor(4);
+					g.setShapeType(_kGSTArrow);
+					g.setName(kGripDepth);
+					g.setToolTip(T("|Controls depth of tool|"));
+					g.addHideDirection(vecZT);
+					g.addHideDirection(-vecZT);	
+					_Grip.append(g);
+					nGripDepth = _Grip.length() - 1;
+				}
+				else if (bDrag)
+				{ 
+					PLine pl(pt, _Grip[nGripDepth].ptLoc()-vec.crossProduct(vecZT)*.5*dDiameter);
+					dpModel.draw(pl);
+					return;
+				}
+				else
+				{ 
+					Grip& g = _Grip[nGripDepth];
+					g.setVecX(vecZT);
+					g.setVecY(vec);				
+					g.setPtLoc(ptEnd+vec.crossProduct(vecZT)*.5*dDiameter);
+				}
+			}				
+		//endregion 	
+			
+			FastenerGuideline fg;
+			Point3d ptStartFg, ptEndFg;
+			if (!bJig)
+			{ 
+				Map m;
+				m.setPoint3d("pt", pt);
+				m.setPoint3d("ptStart", ptStart);
+				m.setPoint3d("ptEnd", ptEnd);
+				if (bHasSink)
+					m.setPoint3d("ptEndSink", ptEndSink);
+				m.setVector3d("vecZT", vecZT);
+				mapLocs.appendMap("Location", m);	//TODO
+				
+				ptStartFg = ptStart + csFastenerGuideLine.vecX() * dOffsetX + csFastenerGuideLine.vecY() * dOffsetY - vecFace * dOffsetZ;
+				ptEndFg = ptEnd + csFastenerGuideLine.vecX() * dOffsetX + csFastenerGuideLine.vecY() * dOffsetY;
+				fg=FastenerGuideline(ptStartFg, ptEndFg, radius);
+			}
+		//Tool //endregion 	
+			
+		//region ConeDrill		
+			int bConeDefinesDepth;// if the cone extents the depth of the main drill
+			if (!bHasSlotX && !bHasSlotY)
+			{
+
+			//region Cone Side 1
+				if (bHasCone)
+				{ 
+				// only angle given	
+					if (dSinkDepth<dEps && dSinkDiameter<dEps)
+						ptStartCone = ptStart+vecZT*(dSinkDepth);
+				// angle+diameter		
+					else if (dSinkDiameter>dEps && dSinkDepth<dEps)
+						ptStartCone = ptStart+vecZT*(dSinkDepth);
+				// angle+diameter		
+					else if (dSinkDiameter<dEps && dSinkDepth<dConeHeight)
+						ptStartCone = ptStart;
+				// angle+diameter+depth		
+					else
+						ptStartCone = ptStart+vecZT*(dSinkDepth-dConeHeight);	
+						
+					ptEndCone = ptStartCone+vecZT * (dConeRadius-radius)/tan1;		
+					ptStartCone.vis(3);	ptEndCone.vis(3);
+					
+					bConeDefinesDepth = vecZT.dotProduct(ptEnd - ptEndCone) <=0;
+					if (bConeDefinesDepth)
+						fg=FastenerGuideline(ptStart, ptEndCone, radius);				
+	
+					ConeDrill cone(ptStartCone+vecZT*dEps, vecZT, sinkRadius, dAngle*.5);			
+					bd1 = cone.cuttingBody();										//bd1.vis(40);
+//					bd1.addTool(Cut(pn1.ptOrg(), pn1.normal()),0);					
+//					ppShape1 =bd1.getSlice(pn1);
+					if (!bJig)
+					{	
+						SolidSubtract sosuCone;
+						if (bDoSinkSolidSubtract)
+							sosuCone = SolidSubtract(bd1, _kSubtract);
+						
+						for (int x=0;x<gbsX.length();x++) 
+						{
+							if (bDoSinkSolidSubtract)
+								gbsX[x].addTool(sosuCone);						
+							else
+								gbsX[x].addTool(cone);
+						}
+						
+						
+						if (abs(vecZT.dotProduct(ptStart- ptStartCone))>dEps)
+							fg.addStep(ptStart,ptStartCone, sinkRadius);
+						if (abs(vecZT.dotProduct(ptStartCone-ptEndCone))>dEps)
+							fg.addStep(ptStartCone,ptEndCone, sinkRadius, radius);							
+					}					
+				} 
+				//ConeDrill Side 1 //endregion 
+			
+			//region Cone Side 2
+				if (bHasCone2)
+				{ 
+				// only angle given	
+					if (dSinkDepth2<dEps && dSinkDiameter2<dEps)
+						ptStartCone2 = ptEnd;//-vecZT*(dConeHeight2);
+				// angle+diameter		
+					else if (dSinkDiameter2>dEps && dSinkDepth2<dEps)
+						ptStartCone2 = ptEnd-vecZT*(dSinkDepth2);
+				// angle+diameter		
+					else if (dSinkDiameter2<dEps && dSinkDepth2<dConeHeight2)
+						ptStartCone2 = ptEnd;
+				// angle+diameter+depth		
+					else
+						ptStartCone2 = ptEnd-vecZT*(dSinkDepth2-dConeHeight2);			
+
+					Point3d ptEndCone2 = ptStartCone2-vecZT * (dConeRadius2-radius)/tan2;
+					//ptStartCone2.vis(3);ptEndCone2.vis(3);
+					
+					ConeDrill cone(ptStartCone2-vecZT*dEps, -vecZT, sinkRadius2, dAngle2*.5);
+					bd2 = cone.cuttingBody();									//bd2.vis(4);
+// TODO
+//					int bConeDefinesDepth2 = (-vecZT).dotProduct(ptStart - ptEndCone2) <=0;
+//					if (bConeDefinesDepth2)
+//						fg=FastenerGuideline(ptEnd, ptEndCone2, radius);				
+//	
+					if (!bJig)
+					{	
+						SolidSubtract sosuCone;
+						if (bDoSinkSolidSubtract)
+							sosuCone = SolidSubtract(bd2, _kSubtract);
+						
+						for (int x=0;x<gbsX.length();x++) 
+						{
+							if (bDoSinkSolidSubtract)
+								gbsX[x].addTool(sosuCone);						
+							else
+								gbsX[x].addTool(cone);
+						}
+						if (abs(vecZT.dotProduct(ptEnd- ptStartCone2))>dEps)
+							fg.addStep(ptEnd,ptStartCone2, sinkRadius2);
+						if (abs(vecZT.dotProduct(ptStartCone2-ptEndCone2))>dEps)
+							fg.addStep(ptStartCone2,ptEndCone2, sinkRadius2, radius);	
+					}					
+				}//ConeDrill Side 2 //endregion 			
+
+			//region Publish DimRequest
+				if (i==0 && j == 0)
+				{ 					
+					Point3d pt = ptStartCone+vecZT*tan1*sinkRadius;
+					{ 
+						Point3d pts[] = bd1.extremeVertices(-vecZT);
+						if (pts.length() > 0)pt = pts.first();
+					}
+					Vector3d vecYT = vecXT.crossProduct(-vecZT);
+					Vector3d vecX1 = -vecZT;
+					Vector3d vecX2 = -vecZT;
+					CoordSys rot; 
+					rot.setToRotation(dAngle * .5, vecYT, pt);
+					vecX1.transformBy(rot);
+					rot.setToRotation(-dAngle * .5, vecYT, pt);
+					vecX2.transformBy(rot);
+					Point3d ptArc = ptStartCone-vecZT*radius;
+					Point3d pt1,pt2;
+					Line(pt, vecX1).hasIntersection(pnFace, pt1);
+					Line(pt, vecX2).hasIntersection(pnFace, pt2);
+
+					PLine plShape(pt,pt1,pt2);
+					plShape.close();
+					PlaneProfile shape(plShape);
+					
+					Map m;
+					m.setPoint3d("ptCenter", pt);
+					m.setPoint3d("ptXline1", pt1);
+					m.setPoint3d("ptXline2", pt2);
+					m.setPoint3d("ptArc", ptArc);
+					m.setVector3d("vecInPlane", vecXT);
+					m.setVector3d("vecNormal", vecYT);					
+					m.setVector3d("AllowedView", vecYT);
+					m.setInt("AlsoReverseDirection", true);
+					m.setInt("Color", 0);
+					m.setPlaneProfile("shape", shape);
+					//drawDim(m);//#func
+					
+					mapRequests.appendMap("DimRequest", m);				
+				}
+					
+			//endregion 
+
+			}				
+		//ConeDrill	 //endregion 	
+			
+		//region Sink Drills
+			if (sinkDepth>dEps&& sinkRadius>0 && !bHasCone && !bHasSlotX && !bHasSlotY)
+			{ 
+				Point3d pt1=ptStartExtreme, pt2 = ptStart+vecZT*dSinkDepth;
+
+				Drill sink(pt1, pt2, sinkRadius);								//
+				bd1 = sink.cuttingBody();//.vis(71);		
+				if (bDoSinkSolidSubtract)
+				{ 
+					SolidSubtract sosu(bd1, _kSubtract);
+					sosu.addMeToGenBeamsIntersect(genbeams);
+				}
+				else
+					sink.addMeToGenBeamsIntersect(genbeams);
+				fg.addStep(pt1, pt2, sinkRadius);
+			}
+			
+			// Sinkhole Opposite Side
+			if (bIsThrough && sinkDepth2>dEps&& sinkRadius2>0 && !bHasCone2 && !bHasSlotX && !bHasSlotY)
+			{ 	
+				Point3d pt1=ptEndExtreme, pt2 = ptEnd-vecZT*dSinkDepth2;
+				Drill sink(pt1, pt2, sinkRadius2);								
+				bd2 = sink.cuttingBody();//.vis(150);
+				if (bDoSinkSolidSubtract)
+				{ 
+					SolidSubtract sosu(bd2, _kSubtract);
+					sosu.addMeToGenBeamsIntersect(gbsX);
+				}
+				else
+					sink.addMeToGenBeamsIntersect(gbsX);					
+				
+				fg.addStep(pt1, pt2, sinkRadius2);
+			}				
+		//Sink Drills //endregion 
+
+		//region Nortise #MS
+			if (!bIsCircleMode && (bHasSlotX || bHasSlotY))
+			{	
+			
+			//region Core Mortise
+				double dx = dSlotLength>0?dSlotLength:diameter;
+				double dy = dSlotWidth>0?dSlotWidth:diameter;
+				double dz = bIsThrough ? vecZT.dotProduct(ptEndExtreme-ptStartExtreme) : depth;
+				
+				if(dx<dEps || dy<dEps || dz<dEps)
+				{ 
+					reportMessage("\n"+scriptName()+T(": |Invalid input parameter for mortise detected.|"));					
+					continue;
+				}
+				
+			// get extreme extents
+				if (bIsThrough && !pn2.normal().isParallelTo(vecZT))
+				{ 
+					PLine pl = getRoundedShape(diameter * .5, dx, dy, PlaneProfile(cst));	//pl.vis(40);
+					
+					dz+=transformPointToExtreme(ptEndExtreme, pl, pn2, vecZT);
+					
+//					
+//					
+//					PlaneProfile pp(pl);
+//					pp.project(pn2, vecZT, dEps);											//pp.vis(40);
+//					Point3d pts[] = pp.getGripVertexPoints();
+//					pts = lnDir.orderPoints(pts, dEps);
+//					if (pts.length()>0)
+//					{
+//						double d1 = vecZT.dotProduct(pts.last() - ptEndExtreme);
+//						dz += d1;
+//						ptEndExtreme += vecZT * d1;
+//					}					
+				}
+
+			// Specify mortise
+				Mortise ms(ptStart, vecXT, vecYT ,vecZT, dx, dy, dz, 0, 0, 1 );
+				ms.setRoundType(_kExplicitRadius);//HSB-21057
+				ms.setExplicitRadius(diameter * .5);
+				bdCore = ms.cuttingBody();	 												//bdCore.vis(6);				
+				ms.addMeToGenBeamsIntersect(genbeams);
+					
+			//Core Mortise //endregion 
+	
+			//region Sink Mortise 1
+				//if (((!bHasCone && dSinkDepth>dEps) || (bHasCone && dConeRadius>radius)) && dSinkDepth>dEps)
+				if (!bHasCone && dSinkDepth>dEps && dSinkDiameter>dDiameter)
+				{ 	
+					double dx1 = dx;
+					double dy1 = dy;
+					double dz1 = bHasCone ? dSinkDepth - dConeDepth : dSinkDepth;
+					
+					if (abs(diameter-dx1)<dEps)
+					{
+						dx1 = dSinkDiameter;
+						dy1 += sinkDelta1;
+					}
+					else if (abs(diameter-dy)<dEps)
+					{
+						dy1 = dSinkDiameter;	
+						dx1+= sinkDelta1;	
+					}	
+					else
+					{ 
+						dx1+= sinkDelta1;
+						dy1+= sinkDelta1;
+					}
+
+					Mortise ms(ptStart, vecXT, vecYT ,vecZT, dx1, dy1, dSinkDepth, 0, 0, 1 );
+					ms.setRoundType(_kExplicitRadius);//HSB-21057
+					ms.setExplicitRadius(dSinkDiameter * .5);
+					ms.addMeToGenBeamsIntersect(gbsX);
+					bd1 = ms.cuttingBody(); 			//if (bDebug)bd1.vis(41);
+
+					if (!bJig && dSinkDepth>0)
+						fg.addStep(ptStart, ptStart+vecZT*dSinkDepth, .5*dSinkDiameter);
+				}//endregion	
+				
+			//region Sink Mortise 2
+				//if (((!bHasCone2 && dSinkDepth2>dEps) || (bHasCone2 && dConeRadius2>radius)) && dSinkDepth2>dEps)
+				if (!bHasCone2 && dSinkDepth2>dEps && dSinkDiameter2>dDiameter)
+				{ 	
+					double dx2 = dx;
+					double dy2 = dy;
+					double dz2 = bHasCone2 ? dSinkDepth2 - dConeDepth2 : dSinkDepth2;
+					if (abs(diameter-dx2)<dEps)
+					{
+						dx2 = dSinkDiameter2;
+						dy2 += sinkDelta2;
+					}
+					else if (abs(diameter-dy)<dEps)
+					{
+						dy2 = dSinkDiameter2;	
+						dx2+= sinkDelta2;	
+					}	
+					else
+					{ 
+						dx2+= sinkDelta2;
+						dy2+= sinkDelta2;
+					}
+					
+					Mortise ms(ptEnd, vecXT, -vecYT ,-vecZT, dx2, dy2, dSinkDepth2, 0, 0, 1 );
+					ms.setRoundType(_kExplicitRadius);//HSB-21057
+					ms.setExplicitRadius(dSinkDiameter2 * .5);
+					ms.addMeToGenBeamsIntersect(gbsX);
+					bd2 = ms.cuttingBody(); 			//if (bDebug)bd2.vis(12);
+					
+					if (!bJig && dSinkDepth2>0)
+						fg.addStep(ptEnd, ptEnd-vecZT*dSinkDepth2, .5*dSinkDiameter2);
+				}//endregion		
+			
+			}//Mortise //endregion
+
+		//region Conical Slotted Hole #SH			
+			if (!bIsCircleMode && (bHasSlotX || bHasSlotY))
+			{ 
+				double dx = dSlotLength>0?dSlotLength:diameter;
+				double dy = dSlotWidth>0?dSlotWidth:diameter;
+				
+				PLine plShape;
+				PLine plStraights[0];
+				PLine plArcs[0];
+				PLine plToolDefs[0];
+				Point3d ptArcCens[0];				
+
+				
+			// Cone Mill 1	
+				if(bHasCone)
+				{ 
+					double deltaZ;
+					double coneWidth = .5*(dSinkDiameter - dDiameter);
+					double coneDepth;
+				
+				// only angle given	
+					if (dSinkDepth<dEps && dSinkDiameter<dEps)
+					{
+						coneDepth = dConeHeight / tan(dAngle * .5);
+						coneWidth = coneDepth * tan(dAngle * .5);
+						deltaZ = 0;
+					}
+				// angle+depth		
+					else if (dSinkDiameter<dEps && dSinkDepth>dEps)
+					{
+						coneWidth = dSinkDepth * tan(dAngle * .5);
+						coneDepth = coneWidth / tan(dAngle * .5);
+						deltaZ = dSinkDepth-coneDepth;
+					}
+				// angle+diameter		
+					else if (dSinkDiameter>dEps && dSinkDepth<dEps)
+					{
+						coneDepth=coneWidth/tan(dAngle*.5);
+						deltaZ = 0;
+					}
+				// angle+diameter+depth		
+					else
+					{						
+						coneDepth=dConeHeight/tan(dAngle*.5);
+						coneWidth = coneDepth * tan(dAngle * .5);
+						deltaZ = dSinkDepth-coneDepth;
+					}
+
+					CoordSys cst(ptStart, vecXT, vecYT, vecZT);			
+					PlaneProfile pp(cst);
+					getRoundedBox(radius, dx, dy, pp,plShape, plArcs, plStraights, plToolDefs, ptArcCens);	
+
+					//region Path extrusion to create solidSubtract
+					PLine plPath = plShape;
+					plPath.transformBy(vecZT*deltaZ);			//plPath.vis(6);	
+					
+					Point3d ptx = plPath.ptStart();
+					Vector3d vecZP = plPath.getTangentAtPoint(ptx);
+					Vector3d vecYP = -cst.vecZ();
+					Vector3d vecXP = vecZP.crossProduct(vecYP);	vecXP.normalize();
+					//ptx.vis(6);
+					
+					PLine plx(vecZP);
+					plx.addVertex(ptx+vecXP*U(2)-vecZT*U(10e3));
+					plx.addVertex(ptx-vecXP*coneWidth-vecZT *U(10e3));
+					plx.addVertex(ptx-vecXP*coneWidth);
+					plx.addVertex(ptx+vecZT*coneDepth);
+					plx.addVertex(ptx+vecXP*U(2)+vecZT*coneDepth);
+					plx.close();										//plx.vis(20);	
+					
+					bd1=Body(plx, plPath, 32 );	
+					plPath.transformBy(vecZT * coneDepth);
+					bd1.addPart(Body(plPath, vecZT * U(10e3), -1));		//bd1.vis(40);	
+					if (!bJig) 
+					{
+						SolidSubtract sosu(bd1);
+						sosu.addMeToGenBeamsIntersect(gbsX);
+					}//endregion 
+				
+					//region Freeprofile Tools
+					if (nToolIndex>0 && coneWidth>.5*dDiameter)//TODO split plines
+					{ 
+						for (int r=0;r<plToolDefs.length();r++) 
+						{ 
+							PLine plFp = plToolDefs[r];
+							plFp.offset(-coneWidth, false);
+							//plFp.vis(2);
+							FreeProfile fp(plFp,_kLeft);
+							fp.setSolidMillDiameter(dDiameter);
+							fp.setSolidPathOnly(true);
+							fp.setDepth(coneDepth+deltaZ);
+							if (bDebug)fp.cuttingBody().vis(150+r);
+							fp.setDoSolid(false);
+							fp.setCncMode(nToolIndex);
+							fp.addMeToGenBeamsIntersect(gbsX);
+						}						
+					}//endregion 
+				
+				//region Add Fastener Step
+					if (!bJig)
+					{
+						Point3d pt1 = ptStart;
+						Point3d pt2 = ptStart + vecZT*(dSinkDepth);
+						Point3d pt3 = pt2+vecZT*coneDepth;						//pt1.vis(1); pt2.vis(2); pt3.vis(3);	
+						
+						double r1 = (bHasSlotXY ? (dSlotLength < dSlotWidth ? dSlotLength : dSlotWidth) : dSinkDiameter) * .5;
+						if (abs(vecZT.dotProduct(pt1-pt2))>dEps)fg.addStep(pt1, pt2, r1);
+						if (abs(vecZT.dotProduct(pt2-pt3))>dEps)fg.addStep(pt2, pt3, r1, radius);						
+					}						
+				//endregion 
+				
+				
+				}
+			// Cone Mill 2	
+				if(bHasCone2)
+				{ 
+
+					double deltaZ;
+					double coneWidth = .5*(dSinkDiameter2 - dDiameter);
+					double coneDepth;
+				
+				// only angle given	
+					if (dSinkDepth2<dEps && dSinkDiameter2<dEps)
+					{
+						coneDepth = dConeHeight2 / tan(dAngle2 * .5);
+						coneWidth = coneDepth * tan(dAngle2 * .5);
+						deltaZ = 0;
+					}
+				// angle+depth		
+					else if (dSinkDiameter2<dEps && dSinkDepth2>dEps)
+					{
+						coneWidth = dSinkDepth2 * tan(dAngle * .5);
+						coneDepth = coneWidth / tan(dAngle * .5);
+						deltaZ = dSinkDepth2-coneDepth;
+					}
+				// angle+diameter		
+					else if (dSinkDiameter2>dEps && dSinkDepth2<dEps)
+					{
+						coneDepth=coneWidth/tan(dAngle2*.5);
+						deltaZ = 0;
+					}
+				// angle+diameter+depth		
+					else
+					{						
+						coneDepth=dConeHeight2/tan(dAngle2*.5);
+						coneWidth = coneDepth * tan(dAngle2 * .5);
+						deltaZ = dSinkDepth2-coneDepth;
+					}
+
+
+					CoordSys cst(ptEnd, vecXT, -vecYT, -vecZT);				
+					PlaneProfile pp(cst);
+					getRoundedBox(radius, dx, dy, pp,plShape, plArcs, plStraights, plToolDefs, ptArcCens);	
+					
+					//region Path extrusion to create solidSubtract
+					PLine plPath = plShape;
+					plPath.transformBy(-vecZT*deltaZ);					//plPath.vis(6);	
+					
+					Point3d ptx = plPath.ptStart();
+					Vector3d vecZP = plPath.getTangentAtPoint(ptx);
+					Vector3d vecYP = -cst.vecZ();
+					Vector3d vecXP = vecZP.crossProduct(vecYP);	
+					
+					double a = dConeHeight2 * tan(dAngle2 * .5);
+					PLine plx(vecZP);
+					plx.addVertex(ptx+vecXP*U(2)+vecZT*U(10e3));
+					plx.addVertex(ptx-vecXP*coneWidth+vecZT *U(10e3));
+					plx.addVertex(ptx-vecXP*coneWidth);
+					plx.addVertex(ptx-vecZT*coneDepth);
+					plx.addVertex(ptx+vecXP*U(2)-vecZT*coneDepth);
+					plx.close();										//plx.vis(40);	
+					
+					bd2=Body(plx, plPath, 32 );					
+					bd2.addPart(Body(plPath, vecZT * U(10e3), 1));		//bd2.vis(4);
+					if (!bJig) 
+					{
+						SolidSubtract sosu(bd2);
+						sosu.addMeToGenBeamsIntersect(gbsX);
+					}//endregion 
+					
+					//region Freeprofile Tools
+					if (nToolIndex>0 && coneWidth>.5*dDiameter)//TODO split plines
+					{ 
+						for (int r=0;r<plToolDefs.length();r++) 
+						{ 
+							PLine plFp = plToolDefs[r];
+							plFp.offset(-coneWidth, false);//plFp.vis(r);
+							//plFp.transformBy(-vecZT*deltaZ);
+							FreeProfile fp(plFp,_kLeft);
+							fp.setSolidMillDiameter(dDiameter);
+							fp.setSolidPathOnly(false);
+							fp.setDepth(coneDepth+deltaZ);
+							if (bDebug)fp.cuttingBody().vis(150+r);
+							fp.setDoSolid(false);
+							fp.setCncMode(nToolIndex);
+							fp.addMeToGenBeamsIntersect(gbsX);
+						}						
+					}//endregion 
+					
+									
+				//region Add Fastener Step
+					if (!bJig)
+					{
+						Point3d pt1 = ptEnd;
+						Point3d pt2 = ptEnd - vecZT*deltaZ;//(dSinkDepth2-coneDepth);
+						Point3d pt3 = pt2-vecZT*coneDepth;						//pt1.vis(1); pt2.vis(2); pt3.vis(3);	
+						
+						double r1 = (bHasSlotXY ? (dSlotLength < dSlotWidth ? dSlotLength : dSlotWidth) : dSinkDiameter2) * .5;
+						if (abs(vecZT.dotProduct(pt1-pt2))>dEps)fg.addStep(pt1, pt2, r1);
+						if (abs(vecZT.dotProduct(pt2-pt3))>dEps)fg.addStep(pt2, pt3, r1, radius);						
+					}						
+				//endregion 
+
+
+				}
+
+			//region Add Cone				
+//				if (bHasCone && dConeRadius>radius) //&& sinkRadius > dEps && dSinkDepth > dEps)
+//				{
+//					double diam = (dConeRadius - radius);
+//					//if (delta * .5 > diam)diam = delta * .5;
+//					for (int j=0;j<plToolDefs.length();j++) 
+//					{ 
+//						PLine pl1 = plToolDefs[j]; 
+//						pl1.convertToLineApprox(dEps);
+//						PLine pl2 = pl1;
+//						pl2.offset(-.5*delta, false);						
+//						pl1.transformBy(vecZT * dConeDepth);
+//
+//						pl1.vis(1);			pl2.vis(3);
+//	
+//						PropellerSurfaceTool tt(pl1, pl2,diam, U(10));
+//						tt.setMillSide(_kLeft);	
+//						tt.setCncMode(nToolIndex);
+//						//tt.cuttingBody().vis(6+j);
+//						//tt.addMeToGenBeamsIntersect(gbsX);	
+//					}//next j
+//				}
+				
+
+				
+			//endregion 				
+
+			//region Debug
+//				plShape.vis(1);
+//				
+//				for (int i=0;i<plArcs.length();i++) 
+//				{ 
+//					PLine pl = plArcs[i];
+//					pl.transformBy(_ZW * U(1));
+//					pl.vis(3); 
+//				}//next i
+//				for (int i=0;i<plStraights.length();i++) 
+//				{ 
+//					PLine pl = plStraights[i];
+//					pl.transformBy(_ZW * U(2));
+//					pl.vis(4); 
+//				}//next i
+//				for (int i=0;i<plToolDefs.length();i++) 
+//				{ 
+//					PLine pl = plToolDefs[i];
+//					pl.transformBy(_ZW * U(3));
+//					pl.vis(6+i); 
+//				}//next i	
+//				for (int i=0;i<ptArcCens.length();i++) 
+//				{ 
+//					ptArcCens[i].vis(2); 
+//				}//next i						
+			//endregion 
+
+
+
+			}
+			
+			else if (0 && !bIsCircleMode && (bHasSlotX || bHasSlotY))
+			{ 
+				Vector3d vecA = bHasSlotX?vecXT:-vecYT;
+				Vector3d vecB = bHasSlotX?vecYT:vecXT;
+				
+				double dSlotX = bHasSlotX?(dSlotLength - diameter):0;
+				double dSlotY = bHasSlotY?(dSlotWidth - diameter):0;
+							
+				double dSlot = bHasSlotX ? dSlotX : dSlotY;				
+
+				Point3d pt1 = pt - .5 * (vecXS * dSlotX + vecYS * dSlotY);
+				Point3d pt2 = pt + .5 * (vecXS * dSlotX + vecYS * dSlotY);
+
+				// HSB-17797
+				ptSlots.append(pt1);	//pt1.vis(3);
+				ptSlots.append(pt2);	//pt2.vis(4);
+				
+				PLine plFp(vecFace);
+				plFp.addVertex(pt1);
+				plFp.addVertex(pt2);				
+				//plFp.projectPointsToPlane(pnFace, vecFace);					
+				if (abs(dRotation) > dEps)plFp.transformBy(csRot); 			//plFp.vis(21); 		
+				if (bHasBevel > dEps)plFp.transformBy(csBevel);				//plFp.vis(2);
+				
+			// Get tool contour	
+				PLine plContour(plFp.coordSys().vecZ());
+				Point3d ptX;
+				
+				if (bHasSlotXY)
+				{ 
+					ptX = plFp.ptMid() - vecXT * (.5 * dSlotX + radius);			//ptX.vis(1);
+					plContour.addVertex(ptX);
+					ptX -= vecYT*.5*dSlotY;
+					plContour.addVertex(ptX);
+					ptX += (vecXT - vecYT)*radius;
+					plContour.addVertex(ptX, tan(-22.5)); plContour.vis(6);
+					ptX += vecXT*dSlotX;
+					plContour.addVertex(ptX);	
+					ptX += (vecXT + vecYT)*radius;
+					plContour.addVertex(ptX, tan(-22.5));	
+					ptX += vecYT*.5*dSlotY;
+					plContour.addVertex(ptX);				
+				}
+				else
+				{ 
+					ptX= plFp.ptStart()-vecA*radius;
+					plContour.addVertex(ptX);
+					ptX += (vecA - vecB)*radius;
+					plContour.addVertex(ptX, tan(-22.5));
+					ptX += vecA*dSlot;
+					plContour.addVertex(ptX);
+					ptX += (vecA + vecB)*radius;
+					plContour.addVertex(ptX, tan(-22.5));
+				}
+				
+				PLine plSinkPath = plContour;			plContour.vis(2);
+
+				if (bHasSlotXY)
+				{ 
+					ptX += vecYT*.5*dSlotY;
+					plContour.addVertex(ptX);
+					ptX -= (vecXT - vecYT)*radius;
+					plContour.addVertex(ptX, tan(-22.5));
+					ptX -= vecXT * dSlotX;
+					plContour.addVertex(ptX);
+					ptX -= (vecXT + vecYT)*radius;
+					plContour.addVertex(ptX, tan(-22.5));											
+				}
+				else
+				{ 
+					ptX -= (vecA - vecB)*radius;
+					plContour.addVertex(ptX, tan(-22.5));
+					ptX -= vecA*dSlot;
+					plContour.addVertex(ptX);
+					ptX -= (vecA + vecB)*radius;
+					plContour.addVertex(ptX, tan(-22.5));
+				}
+				plContour.close();					//plContour.vis(40);
+
+			// Get sink contour	
+				PLine plSinkContour = plContour;
+				if (sinkRadius>dEps)
+				{
+					plSinkContour.offset(sinkRadius - radius);
+					ppShape1.joinRing(plSinkContour, _kAdd);
+				}
+
+			// Get delta depth if beveled
+				double dFpDepth = bIsThrough ? dH + dEps : depth;
+				if (bIsThrough && bHasBevel)
+				{ 
+					bdCore=Body (plSinkContour, vecZT * vecZT.dotProduct(ptEndExtreme-pt), 1);			//bdf.vis(40);
+					Point3d ptsZ[] = bdCore.extremeVertices(vecFace);
+					if(ptsZ.length()>0)
+					{ 
+							
+						Point3d ptX1=ptsZ.last();//, ptsZ.first();
+						//if (Line(ptX1, vecZT).hasIntersection(pnFace, ptX2))
+							dFpDepth += vecZT.dotProduct(ptFace - ptX1);
+					}
+					bdCore=Body(plContour, vecZT * dFpDepth*2, 0);					
+				}
+				else
+					bdCore=Body (plContour, vecZT * 2*dFpDepth, 0);
+				//bdCore.vis(40);				plFp.vis(2);
+				
+			//region Add Main Slot
+				if ((bHasSlotX && !bHasSlotY) || (!bHasSlotX && bHasSlotY))
+				{ 
+					FreeProfile fp(plFp,_kCenter);
+					fp.setSolidMillDiameter(diameter);
+					fp.setSolidPathOnly(true);
+					fp.setDepth(dFpDepth);
+					fp.setDoSolid(false);
+
+					if (bDoSinkSolidSubtract)
+					{ 
+						Map mapX;
+						mapX.setString(sMapXKey, sMapXValue);
+						fp.setSubMapX(sMapXName,mapX);	
+					}
+
+					if (!bJig) 
+					{
+						fp.addMeToGenBeamsIntersect(genbeams);
+						SolidSubtract sosu(bdCore);
+						sosu.addMeToGenBeamsIntersect(genbeams);
+					}						
+				}
+				else
+				{ 
+					//plContour.vis(43);
+					PLine pl = plContour;
+					pl.convertToLineApprox(dEps);
+					FreeProfile fp(pl,_kRight);
+					fp.setSolidMillDiameter(radius*2);
+					fp.setDepth(dFpDepth);
+					fp.setMachinePathOnly(false);
+					//fp.cuttingBody().vis(41);
+					
+					if (bDoSinkSolidSubtract)
+					{ 
+						Map mapX;
+						mapX.setString(sMapXKey, sMapXValue);
+						fp.setSubMapX(sMapXName,mapX);	
+					}	
+					
+					fp.addMeToGenBeamsIntersect(genbeams);
+				}
+				
+			//endregion 	
+
+			//region Add Sink Slots
+				if (((!bHasCone && sinkRadius>dEps) || (bHasCone && dConeRadius>radius)) && dSinkDepth>dEps)
+				{ 
+					//plSinkContour.vis(2);
+					
+					FreeProfile fpSink(plSinkContour,_kRight);
+					fpSink.setSolidMillDiameter(sinkRadius);
+					//fpSink.setSolidPathOnly(true);
+					double depth = bHasCone ? dSinkDepth - dConeDepth : dSinkDepth;
+					fpSink.setDepth(depth);
+					//fpSink.cuttingBody().vis(6);
+					fpSink.setDoSolid(false);
+					if (!bJig && depth>dEps) 
+					{
+						if (!bDoSinkSolidSubtract)
+							fpSink.addMeToGenBeamsIntersect(genbeams);
+						
+						bd1=Body(plSinkContour, vecZT * depth * 2, -1);	
+						bd1.transformBy(vecZT * depth);			//bd.vis(4);
+						SolidSubtract sosu(bd1);
+						sosu.addMeToGenBeamsIntersect(gbsX);
+					}						
+				}				
+			//endregion
+			
+			//region Add Cone				
+				if (bHasCone && dConeRadius>radius) //&& sinkRadius > dEps && dSinkDepth > dEps)
+				{
+					
+					double diam = (dConeRadius - radius);
+					PLine pl1 = plSinkPath;
+					pl1.convertToLineApprox(dEps);
+					PLine pl2 = pl1;
+					pl1.offset(diam);
+					
+					pl2.transformBy(vecZT * dConeDepth);
+					
+					if (dSinkDepth > 0  && dSinkDepth - dConeDepth>0)
+					{ 
+						double d = dSinkDepth - dConeDepth;
+						pl1.transformBy(vecZT * d);
+						pl2.transformBy(vecZT * d);
+					}
+//
+					pl1.vis(1);
+					pl2.vis(3);
+
+					PropellerSurfaceTool tt(pl1, pl2,diam, U(10));
+					tt.setMillSide(_kRight);	
+					tt.setCncMode(nToolIndex);
+					//tt.cuttingBody().vis(6);
+					tt.addMeToGenBeamsIntersect(genbeams);
+					
+					CoordSys rot; rot.setToRotation(180, vecZT,plFp.ptMid());
+					tt.transformBy(rot);
+					//tt.cuttingBody().vis(44);
+					tt.addMeToGenBeamsIntersect(genbeams);
+			
+	
+					
+				}
+			//endregion 	
+				
+			}
+		//endregion 
+		
+		//region Main Drill
+			else if(!bConeDefinesDepth)
+			{ 
+				Drill drill(ptStartExtreme, ptEndExtreme, radius);				
+				bdCore = drill.cuttingBody();										
+				//if (bDebug)bdCore.vis(3);				
+				if (!bJig)
+				{	
+					if (bDoSinkSolidSubtract)
+					{ 
+						Map mapX;
+						mapX.setString(sMapXKey, sMapXValue);
+						drill.setSubMapX(sMapXName,mapX);	
+					}	
+					drill.addMeToGenBeamsIntersect(gbsX);	
+				}
+					
+			// Circle at end(depth)	
+				if (!bIsThrough && !bHasBevel && bDrawContour)
+				{ 
+					PLine c;
+					c.createCircle(pt+vecZT*depth, vecZT, radius);	
+					dpModel.draw(c);
+				}							
+			}				
+		//endregion 
+
+		//region Draw
+		// Trim and combine shapes
+			combineShape(pn1, bd1, ppShape1);		//bd1.vis(4);
+			combineShape(pn1, bdCore, ppShape1); 	//bdCore.vis(4);
+
+			if (bIsThrough)
+			{ 
+				combineShape(pn2, bd2, ppShape2);
+				combineShape(pn2, bdCore, ppShape2);				
+			}
+			//ppShape1. vis(6);
+
+			if (nc<255)
+				dpModel.color(bHasGenBeamIntersection?nc:1);			
+			else
+				dpModel.trueColor(bHasGenBeamIntersection?nc:red);
+
+		//region On Jig or Drag
+			if (bJig || bDrag)
+			{ 
+				drawSolidJig(bdCore, dpModel);
+				drawSolidJig(bd1, dpModel);
+				drawSolidJig(bd2, dpModel);
+//				
+//				if(!bdCore.isNull())dpModel.draw(bdCore);
+//				if(!bd1.isNull())dpModel.draw(bd1);	
+//				if(bIsThrough && !bd2.isNull())dpModel.draw(bd2);
+			}				
+		//On Jig or Drag //endregion 
+
+			if (bDrawAxis)
+			{ 
+				Point3d pt2 = bConeDefinesDepth ? ptEndCone : ptEnd;
+				if (bIsThrough)
+					Line(pt, vecZT).hasIntersection(pnOpp, pt2);
+				dpModel.draw(PLine(ptStart,ptEnd));					
+			}
+
+			if (bDrawContour)
+			{
+				if (nt>0 && nt<100)	dpModel.draw(ppShape1, _kDrawFilled, nt);						
+				dpModel.draw(ppShape1);	
+			}
+			if (bDrawContour && bIsThrough)
+			{
+				if (nt>0 && nt<100)	dpModel.draw(ppShape2, _kDrawFilled, nt);						
+				dpModel.draw(ppShape2);
+			}				
+		//endregion 
+
+	
+				
+			
+			if(!bHasGenBeamIntersection) { continue;}
+			
+		// add fastener guideline	
+			if (!bJig)
+			{
+				Point3d pt = fg.ptStart();		//fg.vis(2);
+				_ThisInst.addFastenerGuideline(fg);
+				FastenerAssemblyEnt fae;
+				double fastenerLength = fae.bIsValid()?GetLengthFromArticleNumber(fae):0;
+				
+			// find potential fastener at guideline location
+				for (int i=0;i<faes.length();i++) 
+				{ 
+					CoordSys csi = faes[i].coordSys(); csi.vis(i);
+					if  ((pt-csi.ptOrg()).length()<dEps) // csi.vecZ().isCodirectionalTo(csi.vecZ()) &&
+					{ 
+						fae = faes[i];
+						//reportNotice("\nfound at " + csi.ptOrg() + " i:" + i);
+						break;
+					}					 
+				}//next i
+
+			// Add new fastenerEntity
+				if (bCreateFasteners || (dFastenerLength>0 && abs(fastenerLength-dFastenerLength)>dEps))
+				{
+ 					fae.dbCreate(sDefinition, CoordSys(pt, csFastenerGuideLine.vecX(),csFastenerGuideLine.vecY(),csFastenerGuideLine.vecZ()));
+				
+				// Control user length	
+					if (dFastenerLength>0)
+					{ 
+						fae.setLengthSelectionIsAutomatic(false);
+						FastenerListComponent flc;
+						String articleNumber = GetArticleNumberFromLength(fae.definition(), dFastenerLength , flc);
+						if (articleNumber!="")
+						{
+							//if (bDebug)reportNotice("\n   fae valid " +fae.bIsValid() + ", " + fae.handle() + " setting article "+ articleNumber);
+							fae.setArticleNumber(articleNumber);
+							//fae.setHoldingDistance(dFastenerLength, true);
+						}	
+					}				
+					int bSuccess= fae.anchorTo(_ThisInst,pt,U(1));
+					//reportNotice("\nfae created: "+fae.handle() + " " + fae.articleNumber() + " success " + bSuccess);
+				}
+	
+			}
+
+			if (bIsSingleLocation)break;
+		}//next i
+		
+			if (bJig){ continue;}
+
+		//region Publish ptLocs requests
+		if (ptLocs.length()>0)
+		{ 
+			Vector3d vecXD = vecFace.isParallelTo(vecZ) ? vecX : vecZ;
+			Vector3d vecYD = vecXD.crossProduct(-vecFace);
+			Vector3d vecZD = vecFace;
+			
+			for (int xy=0;xy<2;xy++) 
+			{ 
+				Vector3d vecDimLineDir = xy==0?vecXD:vecYD;
+				Vector3d vecPerpDimLineDir = xy==0?vecYD:-vecXD;
+				Vector3d vecAllowed = vecDimLineDir.crossProduct(vecPerpDimLineDir);
+
+//				vecPerpDimLineDir.vis(ptLocs[0], xy);
+//				vecAllowed.vis(ptLocs[0], 150);
+//			
+			// Store 4 points building up the coordSys
+				Point3d ptsCoord[] = { ptLocs[0]};
+				ptsCoord.append(ptLocs[0] + vecDimLineDir * U(1));
+				ptsCoord.append(ptLocs[0] + vecPerpDimLineDir * U(1));
+				ptsCoord.append(ptLocs[0] + vecAllowed * U(1));
+
+				Map m;
+				m.setPoint3dArray("ptCoord[]", ptsCoord);
+				m.setPlaneProfile("Shape", ppShape1);
+				m.setPoint3dArray(kNodes, ptSlots.length()>0?ptSlots:ptLocs); // HSB-17797
+//					m.setVector3d("vecDimLineDir", vecDimLineDir);
+//					m.setVector3d("vecPerpDimLineDir", vecPerpDimLineDir);					
+//					m.setVector3d("AllowedView", vecAllowed);
+				m.setInt("AlsoReverseDirection", true);
+				m.setInt("Color", xy);			
+				mapRequests.appendMap("DimRequest", m);		 
+			}//next xyz	
+
+		}
+		//endregion 		
+
+	//endregion 	
+
+	}//next j
+
+	if (bConvertToSingle && !bDebug)
+	{ 
+		eraseInstance();
+		return;
+	}
+	if (bJig)return;
+	nQuantity.set(numDrill);
+
+// publish dim requests	
+	if (mapRequests.length()>0)
+	{ 
+		_Map.setMap("DimRequest[]", mapRequests);	
+//		mapDimInfo.setMap("DimRequest[]", mapRequests);	
+//		_ThisInst.setSubMapX("Hsb_DimensionInfo", mapDimInfo);
+	}
+	else
+	{
+		_Map.removeAt("DimRequest[]", true);
+		//_ThisInst.removeSubMapX("Hsb_DimensionInfo");		
+	}
+	if (_ThisInst.subMapXKeys().findNoCase("Hsb_DimensionInfo",-1)>-1) // legacy removal
+		_ThisInst.removeSubMapX("Hsb_DimensionInfo");	
+
+
+//Distribute //endregion
+
+//region Trigger
+{ 
+	// create TSL
+	TslInst tslDialog;			Map mapTsl;
+	GenBeam gbsTsl[] = { };		Entity entsTsl[] = { };			Point3d ptsTsl[] = { _Pt0};
+	int nProps[] ={ };			double dProps[] ={ };			String sProps[] ={ };	
+
+//region Trigger FlipSide
+	String sTriggerFlipSide = T("|Flip Side|");
+	addRecalcTrigger(_kContextRoot, sTriggerFlipSide );
+	if (_bOnRecalc && (_kExecuteKey==sTriggerFlipSide || _kExecuteKey==sDoubleClick))
+	{
+		sFace.set(sFace == kReferenceFace ? kTopFace:kReferenceFace );
+		vecFace *= -1;
+		_Map.setVector3d("vecFace", vecFace);
+		setExecutionLoops(2);
+		return;
+	}
+
+
+	if (_kNameLastChangedProp==sFaceName)
+	{ 
+		vecFace *= -1;
+		_Map.setVector3d("vecFace", vecFace);
+		setExecutionLoops(2);
+		return;		
+	}//endregion
+
+//region Trigger RevertDirection
+	String sTriggerRevertDirection = T("|Revert Direction|");
+	if (sDistributionMode!=tVertex)
+	{ 
+		addRecalcTrigger(_kContextRoot, sTriggerRevertDirection );
+		if (_bOnRecalc && _kExecuteKey==sTriggerRevertDirection)
+		{
+			_Map.setInt(kRevertDirection, bRevertDirection?false:true);	
+			setExecutionLoops(2);
+			return;
+		}	
+	}//endregion	
+
+//region Trigger AddGenbeam
+	String sTriggerAddGenbeam = T("|Add Genbeams|");
+	addRecalcTrigger(_kContextRoot, sTriggerAddGenbeam );
+	if (_bOnRecalc && _kExecuteKey==sTriggerAddGenbeam)
+	{
+	// prompt for genbeams
+		Entity ents[0];
+		PrEntity ssE(T("|Select genbeams|"), GenBeam());
+		if (ssE.go())
+			ents.append(ssE.set());	
+		
+	// collect genbeams		
+		for (int i=0;i<ents.length();i++) 
+		{ 
+			GenBeam gb = (GenBeam)ents[i];
+			if (gb.bIsValid() && _GenBeam.find(gb)<0)
+			{ 
+//				//if (gbFemales.find(gb)>-1){ continue;} // skip any female assigned
+//								
+//				Vector3d vecZi = gb.vecZ();
+//				Point3d ptFacei = gb.ptCen() + .5 * vecFace * gb.dH();
+//		
+//				if (!vecZ.isParallelTo(vecZi) || 
+//					vecZ.dotProduct(ptFace-ptFacei)>dEps || 
+//					_GenBeam.find(gb)>-1)
+//				{ 
+//					continue;
+//				}		
+
+				_GenBeam.append(gb);
+			}	 
+		}//next i				
+			
+		setExecutionLoops(2);
+		return;
+	}//endregion	
+
+//region Trigger RemoveGenbeam
+	String sTriggerGenbeam = T("|Remove genbeams|");
+	if (genbeams.length()>1)
+	{
+		addRecalcTrigger(_kContextRoot, sTriggerGenbeam );
+		if (_bOnRecalc && _kExecuteKey==sTriggerGenbeam)
+		{
+		// prompt for genbeams
+			Entity ents[0];
+			PrEntity ssE(T("|Select genbeams|"), GenBeam());
+			if (ssE.go())
+				ents.append(ssE.set());			
+		
+		// collect genbeams		
+			for (int i=0;i<ents.length();i++) 
+			{ 
+				int n = _GenBeam.find(ents[i]);
+				if (n>-1 && _GenBeam.length()>1)
+				{ 
+					_GenBeam.removeAt(n);
+				}
+//				int f = gbFemales.find(ents[i]);
+//				if (f>-1 && gbFemales.length()>1)
+//				{ 
+//					gbFemales.removeAt(f);
+//				}
+			}//next i			
+			setExecutionLoops(2);
+			return;
+		}		
+	}
+//endregion	
+
+//region Trigger AddPolylines / ConvertToPolyline
+	if (!bIsSingleLocation)
+	{ 
+	// Trigger AddPolylines	
+		String sTriggerAddPolylines = T("|Add Polylines|");
+		addRecalcTrigger(_kContextRoot, sTriggerAddPolylines );
+		if (_bOnRecalc && _kExecuteKey==sTriggerAddPolylines)
+		{
+			Entity ents[0];
+			PrEntity ssE(T("|Select additional defining polylines|"), EntPLine());
+			ssE.addAllowedClass(EntPLine());
+			if (ssE.go())
+				ents.append(ssE.set());
+					
+		// collect genbeams	
+			for (int i = 0; i < ents.length(); i++)
+			{
+				EntPLine epl = (EntPLine)ents[i];
+				if (epl.bIsValid() && _Entity.find(epl)<0)
+				{
+					PLine pl = epl.getPLine();
+					if (!pl.coordSys().vecZ().isParallelTo(vecFace))
+					{
+						reportMessage("\n" + T("|Polylines must be drawn parallel to tool plane|"));
+						continue;
+					}
+					epls.append(epl);
+					_Entity.append(epl);
+				}
+			}
+			setExecutionLoops(2);
+			return;
+		}		
+	
+	//region Trigger ConvertToSingle
+		
+		addRecalcTrigger(_kContextRoot, sTriggerConvertToSingle );
+
+		//endregion	
+	
+	
+	
+	
+ 	// Trigger ConvertToPolyline				
+		if (epls.length()<1)
+		{ 
+			String sTriggerConvertToPolyline = T("|Convert To Polyline|");
+			addRecalcTrigger(_kContextRoot, sTriggerConvertToPolyline );
+			if (_bOnRecalc && _kExecuteKey==sTriggerConvertToPolyline)
+			{
+			// remove any vertex grip
+				for (int i=_Grip.length()-1; i>=0 ; i--) 
+					if (_Grip[i].name().find(kGripVertex,0,-1)>-1)
+						_Grip.removeAt(i); 
+	
+			// the row distribution will be managed by individual plines
+				nNumRow.set(1);
+				sRowOffsetList.set("");
+				
+				for (int i=0;i<plines.length();i++) 
+				{ 
+					EntPLine epl;
+					epl.dbCreate(plines[i]);
+					if (epl.bIsValid())
+					{
+						epl.assignToGroups(gbRef, 'T');
+						if (nc<256)
+							epl.setColor(nc);
+						else
+							epl.setTrueColor(nc);
+						epl.setTransparency(nt);
+						_Entity.append(epl);
+					}
+					 
+				}//next i
+				setExecutionLoops(2);
+				return;
+			}		
+		}		
+		
+		
+	}
+	//endregion
+
+//region Trigger ConvertToGrip
+	if (!bHasGripVertices)
+	{ 
+		String sTriggerConvertToGrip = T("|Convert To Grip Points|");
+		addRecalcTrigger(_kContextRoot, sTriggerConvertToGrip );
+		if (_bOnRecalc && _kExecuteKey==sTriggerConvertToGrip)
+		{
+		// create TSL
+			TslInst tslNew;				Map mapTsl;
+			int bForceModelSpace = true;	
+			String sExecuteKey,sCatalogName = tLastInserted;
+			String sEvent="OnDbCreated"; // "OnElementConstructed", "OnRecalc", "OnMapIO"...
+			GenBeam gbsTsl[] = {};		Entity entsTsl[] = {};			Point3d ptsTsl[] = {};
+		
+			_ThisInst.setCatalogFromPropValues(sCatalogName);
+			
+			mapTsl.setVector3d("vecFace", vecFace);
+			mapTsl.setEntityArray(_Map.getEntityArray("Female[]", "", "Female"), false, "Female[]", "", "Female");
+			for (int i=0;i<_GenBeam.length();i++) 
+			{ 
+				gbsTsl.append(_GenBeam[i]); 
+			}//next i
+			
+			for (int i=0;i<plines.length();i++) 
+			{ 
+				ptsTsl.setLength(0);
+				Point3d pt0, pts[] = plines[i].vertexPoints(true);
+				pt0.setToAverage(pts);
+				ptsTsl.append(pt0);
+				ptsTsl.append(pts);
+				tslNew.dbCreate(scriptName() , _XW ,_YW,gbsTsl, entsTsl, ptsTsl, sCatalogName, bForceModelSpace, mapTsl, sExecuteKey, sEvent);  
+			}//next i
+			
+		// purge existing epls
+			for (int i=_Entity.length()-1; i>=0 ; i--) 
+				if (_Entity[i].bIsKindOf(EntPLine()) && _Entity[i].bIsValid())
+					_Entity[i].dbErase(); 
+
+			eraseInstance();
+			return;
+		}		
+	}//endregion
+
+//region Trigger AddCircles
+	String sTriggerAddCircles = T("|Add Circles|");
+	if (sDistributionMode==tCircle)
+		addRecalcTrigger(_kContextRoot, sTriggerAddCircles );
+	if (_bOnRecalc && _kExecuteKey==sTriggerAddCircles)
+	{
+	// prompt for entities
+		Entity ents[0];
+		PrEntity ssE(T("|Select circles|"), EntCircle());
+		if (ssE.go())
+			ents.append(ssE.set());
+			
+		for (int i=0;i<ents.length();i++) 
+		{ 
+			_Entity.append(ents[i]); 
+			 
+		}//next i
+		
+		
+		
+		setExecutionLoops(2);
+		return;
+	}//endregion	
+
+//region Trigger RemoveCircles
+	String sTriggerRemoveCircles = T("|Remove Circles|");
+	if (circles.length()>1)addRecalcTrigger(_kContextRoot, sTriggerRemoveCircles );
+	if (_bOnRecalc && _kExecuteKey==sTriggerRemoveCircles)
+	{
+	// prompt for entities
+		Entity ents[0];
+		PrEntity ssE(T("|Select circles|"), EntCircle());
+		if (ssE.go())
+			ents.append(ssE.set());
+			
+		for (int i=0;i<ents.length();i++) 
+		{ 
+			int n= _Entity.find(ents[i]); 
+			if (n>-1)
+				_Entity.removeAt(i);
+			n= circles.find(ents[i]); 
+			if (n>-1)
+				circles.removeAt(i);
+			if (circles.length()==1)
+				break;
+		}//next i
+			
+		setExecutionLoops(2);
+		return;
+	}//endregion	
+
+//region Trigger AddObstacle
+	String sTriggerAddObstacle = T("|Add Obstacle|");
+	addRecalcTrigger(_kContextRoot, sTriggerAddObstacle );
+	if (_bOnRecalc && _kExecuteKey==sTriggerAddObstacle)
+	{
+	// prompt for entities
+		Entity ents[0];
+		PrEntity ssE(T("|Select entities which shall prevent drill locations|"), Entity());
+		if (ssE.go())
+			ents.append(ssE.set());
+		
+	// add new obstacles
+		for (int i=0;i<ents.length();i++) 
+			if (_GenBeam.find(ents[i])<0 && entObstacles.find(ents[i])<0)
+				entObstacles.append(ents[i]);
+		_Map.setEntityArray(entObstacles, false, "Obstacle[]", "", "Obstacle");
+
+		setExecutionLoops(2);
+		return;
+	}//endregion	
+	
+//region Trigger RemoveObstacles
+	String sTriggerRemoveObstacles = T("|Remove Obstacles|");
+	if (entObstacles.length()>0)addRecalcTrigger(_kContextRoot, sTriggerRemoveObstacles );
+	if (_bOnRecalc && _kExecuteKey==sTriggerRemoveObstacles)
+	{
+	// prompt for entities
+		Entity ents[0];
+		PrEntity ssE(T("|Select entities to remove as obstacle|"), Entity());
+		if (ssE.go())
+			ents.append(ssE.set());		
+		
+		for (int i=ents.length()-1; i>=0 ; i--) 
+		{ 
+			int n = entObstacles.find(ents[i]); 
+			if (n>-1)
+				entObstacles.removeAt(n);		
+		}//next i
+		
+		if (entObstacles.length()>0)
+			_Map.setEntityArray(entObstacles, true, "Obstacle[]", "", "Obstacle");
+		else
+			_Map.removeAt("Obstacle[]",true);
+		setExecutionLoops(2);
+		return;
+	}//endregion	
+	
+//region Trigger AddEditTool
+	String sTriggerAddEditTool = T("|Add/Edit Tool Definition|");
+	addRecalcTrigger(_kContext, sTriggerAddEditTool );
+	if (_bOnRecalc && _kExecuteKey==sTriggerAddEditTool)
+	{
+		mapTsl.setInt("DialogMode",1);
+
+		tslDialog.dbCreate(scriptName() , _XW,_YW,gbsTsl, entsTsl, ptsTsl, nProps, dProps, sProps,_kModelSpace, mapTsl);						
+
+		if (tslDialog.bIsValid())
+		{ 
+			tslDialog.setPropValuesFromMap(_ThisInst.mapWithPropValues());
+			String name = sTool == tDefaultEntry ? T(" | New Tool Definitiom|") : sTool;
+			tslDialog.setPropString(4, name);
+
+			tslDialog.setPropString(5, sSinkMode == tDefaultEntry?tRelativeLocked:sSinkMode);
+			tslDialog.setPropString(6, sMapXKey);
+			tslDialog.setPropString(7, sMapXValue);
+			
+			tslDialog.setPropString(8, sDisplayStyle);
+			
+			tslDialog.setPropInt(1, nc);
+			tslDialog.setPropInt(2, nt);
+			
+			int bOk = tslDialog.showDialog();
+			if (bOk)
+			{
+				name = tslDialog.propString(4);
+
+			// loop existing
+				for (int i=0;i<mapTools.length();i++) 
+				{ 
+					Map m = mapTools.getMap(i);
+					String nameX = m.getMapName();
+					if (name.find(nameX,0, false)==0 && name.length()==nameX.length())
+					{ 
+						mapTools.removeAt(i, true);
+						break;
+					}		 
+				}//next i
+				
+				Map m;
+				m.setMap("Properties", tslDialog.mapWithPropValues());
+				
+			// add display override	
+				nc = tslDialog.propInt(1);
+				nt = tslDialog.propInt(2);
+				sDisplayStyle = tslDialog.propString(8);
+			
+				Map m2;	
+				m2.setInt("Color", nc);
+				m2.setInt("Transparency", nt);
+				m2.setString("Style", sDisplayStyle);		
+				m.setMap("Display", m2);
+				
+				m.setMapName(name);				
+				mapTools.appendMap("Tool", m);
+				
+				mapSetting.setMap("Tool[]", mapTools);
+				
+				if (mo.bIsValid())mo.setMap(mapSetting);
+				else mo.dbCreate(mapSetting);				
+
+			}
+			tslDialog.dbErase();
+		}	
+	
+		setExecutionLoops(2);
+		return;
+	}//endregion	
+	
+//region Trigger EraseToolDefinition
+	String sTriggerEraseToolDefinition = T("|Erase Tool Definition|");
+	if (sTool!=tDefaultEntry)
+		addRecalcTrigger(_kContext, sTriggerEraseToolDefinition );
+	if (_bOnRecalc && _kExecuteKey==sTriggerEraseToolDefinition)
+	{
+	// loop existing
+		for (int i=0;i<mapTools.length();i++) 
+		{ 
+			Map m = mapTools.getMap(i);
+			String nameX = m.getMapName();
+			if (sTool.find(nameX,0, false)==0 && sTool.length()==nameX.length())
+			{ 
+				mapTools.removeAt(i, true);
+				break;
+			}		 
+		}//next i
+		
+		mapSetting.setMap("Tool[]", mapTools);
+		
+		if (mo.bIsValid())mo.setMap(mapSetting);
+		else mo.dbCreate(mapSetting);
+		
+		sTool.set(tDefaultEntry);
+		setExecutionLoops(2);
+		return;
+	}//endregion	
+
+//region Trigger DisplaySettings
+	String sTriggerDisplay = T("|Display Settings|");
+	addRecalcTrigger(_kContext, sTriggerDisplay );
+	if (_bOnRecalc && _kExecuteKey==sTriggerDisplay)
+	{
+		mapTsl.setInt("DialogMode",3);
+
+		tslDialog.dbCreate(scriptName() , _XW,_YW,gbsTsl, entsTsl, ptsTsl, nProps, dProps, sProps,_kModelSpace, mapTsl);						
+
+		if (tslDialog.bIsValid())
+		{ 
+			tslDialog.setPropInt(0, nc);
+			tslDialog.setPropInt(1, nt);
+			tslDialog.setPropString(0, sDisplayStyle);
+			
+			int bOk = tslDialog.showDialog();
+			if (bOk)
+			{
+				nc = tslDialog.propInt(0);
+				nt = tslDialog.propInt(1);
+
+				Map m;
+				m.setInt("Color", nc);
+				m.setInt("Transparency", nt);
+				m.setString("Style", tslDialog.propString(0));
+				mapSetting.setMap("Display", m);
+				
+				if (mo.bIsValid())mo.setMap(mapSetting);
+				else mo.dbCreate(mapSetting);				
+
+			}
+			tslDialog.dbErase();
+		}	
+		setExecutionLoops(2);
+		return;
+	}//endregion
+
+//region Dialog Trigger
+	{
+		// create TSL
+		TslInst tslDialog;			Map mapTsl;
+		GenBeam gbsTsl[] = { };		Entity entsTsl[] = { };			Point3d ptsTsl[] = { _Pt0};
+		int nProps[] ={ };			double dProps[] ={ };			String sProps[] ={ };
+		//region Trigger Import/Export Settings
+		if (findFile(sFullPath).length() > 0)
+		{
+			String sTriggerImportSettings = T("|Import Settings|");
+			addRecalcTrigger(_kContext, sTriggerImportSettings );
+			if (_bOnRecalc && _kExecuteKey == sTriggerImportSettings)
+			{
+				mapSetting.readFromXmlFile(sFullPath);
+				if (mapSetting.length() > 0)
+				{
+					if (mo.bIsValid())mo.setMap(mapSetting);
+					else mo.dbCreate(mapSetting);
+					reportMessage(TN("|Settings successfully imported from| ") + sFullPath);
+				}
+				setExecutionLoops(2);
+				return;
+			}
+		}
+		
+		// Trigger ExportSettings
+		if (mapSetting.length() > 0)
+		{
+			String sTriggerExportSettings = T("|Export Settings|");
+			addRecalcTrigger(_kContext, sTriggerExportSettings );
+			if (_bOnRecalc && _kExecuteKey == sTriggerExportSettings)
+			{
+				int bWrite;
+				if (findFile(sFullPath).length() > 0)
+				{
+					String sInput = getString(T("|Are you sure to overwrite existing settings?|") + " [" + T("|No|") + "/" + T("|Yes|") + "]").left(1);
+					bWrite = sInput.makeUpper() == T("|Yes|").makeUpper().left(1);
+				}
+					else bWrite = true;
+					
+					if (bWrite && mapSetting.length() > 0)
+					{
+						if (mo.bIsValid())mo.setMap(mapSetting);
+						else mo.dbCreate(mapSetting);
+						
+						// make sure the path exists	//HSB-10750
+						int bPathFound = sFolders.find(sFolder) >- 1 ? true : makeFolder(sPath + "\\" + sFolder);
+						
+						// write file
+						mapSetting.writeToXmlFile(sFullPath);
+						
+						// report rsult of writing
+						if (findFile(sFullPath).length() > 0)		reportMessage(TN("|Settings successfully exported to| ") + sFullPath);
+						else									reportMessage(TN("|Failed to write to| ") + sFullPath);
+					}
+				
+				setExecutionLoops(2);
+				return;
+			}
+		}
+		//endregion
+		
+		
+	}
+//endregion 
+
+	
+	String sTriggerConfigShopdrawing= T("|Configure Shopdrawing|");
+	//TODO addRecalcTrigger(_kContext, sTriggerConfigShopdrawing );
+	if (_bOnRecalc && _kExecuteKey==sTriggerConfigShopdrawing)
+	{
+		mapTsl.setInt("DialogMode",2);
+		
+		sProps.append(sDistributionFormat);		
+		sProps.append(sStereotype);	
+		//sProps.append(sViews[nView]);
+
+		
+		tslDialog.dbCreate(scriptName() , _XW,_YW,gbsTsl, entsTsl, ptsTsl, nProps, dProps, sProps,_kModelSpace, mapTsl);						
+
+		if (tslDialog.bIsValid())
+		{ 
+			int bOk = tslDialog.showDialog();
+			if (bOk)
+			{	
+				Map m;
+			
+//				nView = sViews.find(tslDialog.propString(2));
+//				if (nView < 0)nView = 0;
+			
+				m.setString(kFormat, tslDialog.propString(0));
+				m.setString(kStereotype, tslDialog.propString(1));
+				
+//				m.setInt(kView, nView);
+//				mapSetting.setMap(kShopdrawing, m);
+//				
+//				if (mo.bIsValid())mo.setMap(mapSetting);
+//				else mo.dbCreate(mapSetting);
+
+			}
+			tslDialog.dbErase();
+		}
+		setExecutionLoops(2);
+		return;
+		
+	}	
+
+//region Trigger EditInPlace : remove instance after cloning into single ones TODO
+//	addRecalcTrigger(_kContextRoot, sTriggerEditInPlace );
+//	if (bEditInPlace)
+//	{ 
+//		eraseInstance();
+//		return;
+//	}//endregion 
+}
+
+if (_kNameLastChangedProp==sToolName)// || (_bOnDbCreated && bIsCircleMode))
+{ 
+	pushCommandOnCommandStack("_HSB_Recalc");
+ 	pushCommandOnCommandStack("(handent \""+_ThisInst.handle()+"\")");
+	//pushCommandOnCommandStack("(Command \"\")");	
+}
+
+//endregion 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
