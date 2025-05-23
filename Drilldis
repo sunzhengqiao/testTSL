@@ -2726,7 +2726,7 @@ category = T("|Slotted Hole|");
 			
 			dH = gbRef.dD(vecFace);
 			ptFace = gbRef.ptCen() + .5 * vecFace * dH;	
-			vecFace.vis(ptFace, 4);
+                        if (bDebug) vecFace.vis(ptFace, 4);
 			
 			
 		// auto correct face property
@@ -4013,7 +4013,7 @@ category = T("|Slotted Hole|");
 
 				bevel = vecZT.angleTo(vecFace);
 				if (abs(bevel) > 0)bHasBevel = true;
-				pt.vis(2);
+                                if (bDebug) pt.vis(2);
 				Line(pt, vec).hasIntersection(pnFace, pt);
 							
 				if (diameter <= 0)
@@ -4039,8 +4039,8 @@ category = T("|Slotted Hole|");
 			{ 
 				double d = i * dDist;
 	
-				pt = pl.getPointAtDist(d);
-				pt.vis(i);				
+                                pt = pl.getPointAtDist(d);
+                                if (bDebug) pt.vis(i);
 				Point3d ptA=pt, ptB=pt;	
 				if (bIsVertexMode)
 				{
@@ -4284,9 +4284,8 @@ category = T("|Slotted Hole|");
 				
 				gbsTsl = _GenBeam;	
 		
-				if (bDebug)
-					ptsTsl[0].vis(6);
-				else
+                                if (bDebug) ptsTsl[0].vis(6);
+                                else
 					tslNew.dbCreate(scriptName() , vecX ,vecY,gbsTsl, entsTsl, ptsTsl, nProps, dProps, sProps,_kModelSpace, mapTsl);			 			
 			}				
 		//Convert to single drill //endregion 
@@ -4391,7 +4390,7 @@ category = T("|Slotted Hole|");
 						ptStartCone = ptStart+vecZT*(dSinkDepth-dConeHeight);	
 						
 					ptEndCone = ptStartCone+vecZT * (dConeRadius-radius)/tan1;		
-					ptStartCone.vis(3);	ptEndCone.vis(3);
+					if (bDebug) { ptStartCone.vis(3); ptEndCone.vis(3); }
 					
 					bConeDefinesDepth = vecZT.dotProduct(ptEnd - ptEndCone) <=0;
 					if (bConeDefinesDepth)
@@ -4974,7 +4973,7 @@ category = T("|Slotted Hole|");
 					ptX -= vecYT*.5*dSlotY;
 					plContour.addVertex(ptX);
 					ptX += (vecXT - vecYT)*radius;
-					plContour.addVertex(ptX, tan(-22.5)); plContour.vis(6);
+					plContour.addVertex(ptX, tan(-22.5)); if (bDebug) plContour.vis(6);
 					ptX += vecXT*dSlotX;
 					plContour.addVertex(ptX);	
 					ptX += (vecXT + vecYT)*radius;
@@ -4994,7 +4993,7 @@ category = T("|Slotted Hole|");
 					plContour.addVertex(ptX, tan(-22.5));
 				}
 				
-				PLine plSinkPath = plContour;			plContour.vis(2);
+				PLine plSinkPath = plContour;			if (bDebug) plContour.vis(2);
 
 				if (bHasSlotXY)
 				{ 
@@ -5135,8 +5134,7 @@ category = T("|Slotted Hole|");
 						pl2.transformBy(vecZT * d);
 					}
 //
-					pl1.vis(1);
-					pl2.vis(3);
+                                        if (bDebug) { pl1.vis(1); pl2.vis(3); }
 
 					PropellerSurfaceTool tt(pl1, pl2,diam, U(10));
 					tt.setMillSide(_kRight);	
@@ -5250,7 +5248,7 @@ category = T("|Slotted Hole|");
 			// find potential fastener at guideline location
 				for (int i=0;i<faes.length();i++) 
 				{ 
-					CoordSys csi = faes[i].coordSys(); csi.vis(i);
+                                        CoordSys csi = faes[i].coordSys(); if (bDebug) csi.vis(i);
 					if  ((pt-csi.ptOrg()).length()<dEps) // csi.vecZ().isCodirectionalTo(csi.vecZ()) &&
 					{ 
 						fae = faes[i];
